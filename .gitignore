@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+
+# Generated analysis output
+output/
+*.csv
+*.jsonl
+
+# OS
+.DS_Store
