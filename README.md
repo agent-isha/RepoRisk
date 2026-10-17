@@ -17,6 +17,7 @@ python -m reporisk /path/to/repo --top 15
 | `--exclude-tests` | Leave test files out of the ranking |
 | `--include-docs` | Keep README/changelog files and `docs/` directories in the ranking |
 | `--exclude GLOB` | Extra pattern to leave out, e.g. `"*.rst"` (repeatable) |
+| `--bug-fixes` | Instead of the ranking, summarize heuristic bug-fix commit candidates. `--top N` sets examples per outcome; `--cutoff` also applies |
 
 Run the tests:
 
@@ -72,3 +73,56 @@ Commits touching more than `MAX_FILES_PER_COMMIT_FOR_COUPLING` (50) files are sk
 - **Coupling depends on commit habits.** Small, focused commits understate coupling; large, mixed commits overstate it. Merge commits are excluded.
 - **`strongest_coupling` is asymmetric.** It is divided by this file's own commits, so a rarely changed file can show high coupling to a busy partner while the partner shows low coupling back.
 - **`first_seen` / `last_changed` follow traversal order** (oldest first), not min/max date, so rewritten history can make them slightly off.
+
+## Bug-fix commit detection
+
+`reporisk/bug_fixes.py` labels every non-merge commit with one of three outcomes:
+
+| Outcome | Meaning |
+|---|---|
+| `likely_bug_fix` | Strong defect wording, or at least two different fix-related terms, and no signs of a non-bug change |
+| `uncertain` | Some fix wording but not enough to be sure, mixed signals, or only test files changed |
+| `not_likely_bug_fix` | No fix wording, a typo/format/docs/dependency/CI change, or a revert |
+
+**These are heuristic labels, not ground truth.** Nobody verified them by hand, and they will be wrong for some commits. Treat `likely_bug_fix` as a noisy positive label, and decide explicitly whether downstream work keeps or drops `uncertain` commits.
+
+```bash
+python -m reporisk /path/to/repo --bug-fixes --top 10
+```
+
+### How a commit is classified
+
+Terms are case-insensitive regexes with word boundaries, so `fix` does not match `prefix` or `fixture`, and `bug` does not match `debug`. They are matched in the **subject line** only.
+
+| Group | Examples | Effect |
+|---|---|---|
+| Strong | bug, bugfix, hotfix, regression, defect, crash, segfault, `fix #123` | One is enough for `likely` |
+| Weak | fix, patch, resolve, incorrect, broken, wrong, error, exception, fail | Two different ones give `likely`; one gives `uncertain` |
+| Non-bug | typo, spelling, whitespace, formatting, lint, pep8, black, docs, readme, changelog, comment, links, error message, ci, chore, bump, upgrade, dependency, vendor, release, revert, merge conflict | With weak terms only → `not_likely`; with a strong term → `uncertain` (mixed) |
+
+The commit body is checked only for issue references:
+- `Fixes #N` counts as strong.
+- `Closes #N` and `Resolves #N` count as weak, because closed issues are often feature requests.
+
+Ignoring the rest of the body is deliberate: bodies often quote release notes ("bug fixes") or unrelated discussion.
+
+The changed files are checked too:
+
+| Changed files | Effect |
+|---|---|
+| All documentation | `not_likely` |
+| All dependency files (`requirements*.txt`, lock files) | `not_likely` |
+| All CI config (`.github/`, `.travis.yml`, etc.) | `not_likely` |
+| All tests | Capped at `uncertain`, since fixing a test usually means a flaky test, not a product bug |
+
+Each result records its **evidence**, e.g. `strong:regression`, `weak:fix`, `non-bug:typo`, `files:docs-only`. This shows exactly why a commit got its label. All term lists, file patterns and the weak-term threshold live in `BugFixRules`, so they can be changed per repository.
+
+### Bug-fix limitations
+
+- **Vague messages are missed.** Real fixes described as "Handle empty header" or "Update models.py" get no label. On `psf/requests` many genuine one-word "Fix …" commits land in `uncertain`.
+- **Precision is unmeasured.** No commits have been hand-labelled yet, so the share of `likely` commits that are real bugs is unknown. Label a random sample of about 50 per outcome before trusting the labels.
+- **English only.** Terms are English, and conventions differ by project; some write `[BUG]`, others only reference issue numbers.
+- **Issue references are not looked up.** `Fixes #123` is trusted without checking that issue #123 is a bug report.
+- **Merge commits are excluded.** Projects whose only fix wording sits in the merge commit ("Merge pull request #12 from user/fix-crash") will be under-counted.
+- **One label per commit.** A commit mixing a bug fix with a refactor is labelled as a whole, and every file it touched is attributed to the fix.
+- **Labels mark the fixing commit, not the bug.** Finding the commit that *introduced* each bug (SZZ) is a later step.

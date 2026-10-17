@@ -34,6 +34,7 @@ class CommitRecord:
     author: str
     date: datetime  # timezone-aware committer date
     changes: tuple[FileChange, ...]
+    message: str = ""
 
 
 @dataclass
@@ -93,7 +94,9 @@ def read_commits(repo_path: str) -> list[CommitRecord]:
             for mf in commit.modified_files
         )
         records.append(
-            CommitRecord(commit.hash, commit.author.email, commit.committer_date, changes)
+            CommitRecord(
+                commit.hash, commit.author.email, commit.committer_date, changes, commit.msg
+            )
         )
     return records
 

@@ -1,7 +1,9 @@
 import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 
+from .bug_fixes import Outcome, detect_in_repo
 from .mining import RECENT_WINDOWS_DAYS, analyze_repo, parse_cutoff, rank_files
 
 
@@ -38,11 +40,21 @@ def main() -> None:
         help="analyze history up to this date (YYYY-MM-DD, end of day UTC); "
         "default: the latest commit",
     )
+    parser.add_argument(
+        "--bug-fixes",
+        action="store_true",
+        help="instead of the ranking, summarize heuristic bug-fix commit candidates "
+        "(--top sets how many examples to show per outcome)",
+    )
     args = parser.parse_args()
 
     repo = Path(args.repo).expanduser().resolve()
     if not (repo / ".git").exists():
         sys.exit(f"Not a git repository: {repo}")
+
+    if args.bug_fixes:
+        print_bug_fix_summary(str(repo), args.cutoff, args.top)
+        return
 
     analysis = analyze_repo(str(repo), args.cutoff)
     files = analysis.files
@@ -69,6 +81,27 @@ def main() -> None:
             f"{s.churn:>8} {s.commits:>8} {len(s.authors):>8}{recent}"
             f"  {hhi} {s.coupled_files:>7} {s.strongest_coupling:.2f}  {path}"
         )
+
+
+def print_bug_fix_summary(repo: str, cutoff, examples: int) -> None:
+    candidates = detect_in_repo(repo, cutoff=cutoff)
+    counts = Counter(c.outcome for c in candidates)
+    print(f"Commits examined: {len(candidates)}")
+    for outcome in Outcome:
+        print(f"  {outcome.value:<20} {counts[outcome]:>6}")
+    print("Heuristic labels from commit messages and changed files, not ground truth.")
+
+    for outcome in (Outcome.LIKELY, Outcome.UNCERTAIN):
+        shown = [c for c in candidates if c.outcome is outcome][-examples:]
+        if not shown:
+            continue
+        print(f"\nMost recent {outcome.value} ({len(shown)} of {counts[outcome]}):")
+        for c in reversed(shown):
+            print(
+                f"  {c.hash[:8]}  {c.timestamp:%Y-%m-%d}  {len(c.files):>3} files"
+                f"  +{c.added}/-{c.deleted}  {c.subject[:72]}"
+            )
+            print(f"            evidence: {', '.join(c.evidence)}")
 
 
 if __name__ == "__main__":
