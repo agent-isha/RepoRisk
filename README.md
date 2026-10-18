@@ -18,6 +18,8 @@ python -m reporisk /path/to/repo --top 15
 | `--include-docs` | Keep README/changelog files and `docs/` directories in the ranking |
 | `--exclude GLOB` | Extra pattern to leave out, e.g. `"*.rst"` (repeatable) |
 | `--bug-fixes` | Instead of the ranking, summarize heuristic bug-fix commit candidates. `--top N` sets examples per outcome; `--cutoff` also applies |
+| `--szz` | Instead of the ranking, trace `likely_bug_fix` commits back to candidate bug-inducing commits. `--top N` sets examples; `--cutoff` limits which fixes are traced |
+| `--szz-output FILE.jsonl` | With `--szz`, also write one JSON record per trace. `*.jsonl` is git-ignored |
 
 Run the tests:
 
@@ -126,3 +128,66 @@ Each result records its **evidence**, e.g. `strong:regression`, `weak:fix`, `non
 - **Merge commits are excluded.** Projects whose only fix wording sits in the merge commit ("Merge pull request #12 from user/fix-crash") will be under-counted.
 - **One label per commit.** A commit mixing a bug fix with a refactor is labelled as a whole, and every file it touched is attributed to the fix.
 - **Labels mark the fixing commit, not the bug.** Finding the commit that *introduced* each bug (SZZ) is a later step.
+
+## SZZ-style tracing
+
+`reporisk/szz.py` takes each `likely_bug_fix` commit and works backwards:
+
+1. Read the fix's diff, skipping merge and root commits.
+2. Collect the lines it **deleted or changed** in source files. These are assumed to be the faulty lines.
+3. Run `git blame -w` on the fix's **parent** for exactly those lines. The commit that last touched each line becomes a **candidate bug-inducing commit**.
+4. Group the lines by `(fix, candidate, file)` into a `TraceRecord`.
+
+```bash
+python -m reporisk /path/to/repo --szz --top 10 --szz-output output/szz.jsonl
+```
+
+Each `TraceRecord` contains:
+- `fix_hash`
+- `inducing_hash` and `inducing_date`
+- `path`: the file's path in the fix's parent
+- `lines`: each line's number before the fix, its number in the inducing commit, and its content
+- `evidence`: why this candidate was chosen
+- `limitations`: caveats for this particular record
+
+Each fix's `TraceResult` also lists the files that were skipped and why, or an `error` when the whole commit could not be traced.
+
+**Candidates, not causes.** Blame names the last commit to touch a line. That commit may have introduced the bug, or it may only have moved, renamed or reformatted the line. Nothing here proves which commit caused a bug.
+
+### Configuration (`SZZConfig`)
+
+| Setting | Default | Why |
+|---|---|---|
+| `trace_test_files` | `False` | Deleted test lines rarely point at the product commit that caused a bug |
+| `trace_doc_files` | `False` | Documentation changes are not code defects |
+| `trace_noise_files` | `False` | Lock files, generated and vendored code |
+| `ignore_whitespace` | `True` | `git blame -w`, so a reindent does not hide the original author |
+| `skip_blank_lines`, `skip_comment_lines` | `True` | No behaviour to blame |
+| `skip_trivial_lines` | `True` | Lines with no letters or digits (`)`, `});`) and lone keywords (`try:`, `else:`) mostly point at whoever last reformatted the block |
+| `max_deleted_lines_per_file` | `100` | Bigger deletions look like rewrites or moves, not targeted corrections |
+
+### How each case is handled
+
+| Case | Handling |
+|---|---|
+| Merge commit | Not traced (`error`) |
+| Root commit (no parent) | Not traced (`error`) |
+| Unknown hash | Not traced (`error`) |
+| File added by the fix | Nothing to blame; ignored |
+| File deleted by the fix | Skipped: deleting a file is not a line-level correction |
+| File renamed by the fix | Old path blamed on the parent; noted in `limitations` |
+| Binary file | Skipped |
+| Blame fails (e.g. path missing) | That file is skipped with git's message; the other files are still traced |
+| Fix only adds lines | Nothing to trace; counted as "no traceable deleted lines" |
+| Shallow-clone boundary commit | Traced, flagged in `limitations` |
+
+### SZZ limitations
+
+- **Fixes that only add lines cannot be traced.** Examples are a missing `None` check or a new `except` branch. On `psf/requests`, 29 of 157 likely fixes had nothing traceable.
+- **Blame finds the last change, not the cause.** Refactors, renames and moves earlier in history get blamed instead of the real culprit. Only whitespace changes are skipped (`-w`); moved or copied code is not followed, since `-M`/`-C` are not used.
+- **One fix often yields several candidates** (up to 11 on `requests`). Downstream work must decide how to weight them; not every changed line in a fix was faulty.
+- **Only the first parent is used,** and changes inside merge commits are never traced.
+- **Labels inherit the bug-fix detector's errors.** A false-positive "fix" produces false-positive inducing commits.
+- **Comment detection is prefix-based.** `#` also matches C preprocessor lines such as `#include`, so drop it from `comment_prefixes` for C/C++ repositories. Block-comment bodies that don't start with `*` are not detected.
+- **Rename chains are followed only by blame itself.** Blame follows renames within a file's history, but not splits or merges of files.
+- **No time check against the bug report.** Classic SZZ refinements discard candidates dated after the bug was reported; there is no issue-tracker data here to do that.

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import sys
 from collections import Counter
@@ -5,6 +7,7 @@ from pathlib import Path
 
 from .bug_fixes import Outcome, detect_in_repo
 from .mining import RECENT_WINDOWS_DAYS, analyze_repo, parse_cutoff, rank_files
+from .szz import trace_repo, write_jsonl
 
 
 def _cutoff_arg(value: str):
@@ -46,7 +49,22 @@ def main() -> None:
         help="instead of the ranking, summarize heuristic bug-fix commit candidates "
         "(--top sets how many examples to show per outcome)",
     )
+    parser.add_argument(
+        "--szz",
+        action="store_true",
+        help="instead of the ranking, trace likely bug-fix commits back to candidate "
+        "bug-inducing commits (SZZ-style; --top sets how many examples to show)",
+    )
+    parser.add_argument(
+        "--szz-output",
+        metavar="FILE.jsonl",
+        help="with --szz, also write one JSON record per trace to this file",
+    )
     args = parser.parse_args()
+    if args.szz and args.bug_fixes:
+        parser.error("--szz and --bug-fixes cannot be combined")
+    if args.szz_output and not args.szz:
+        parser.error("--szz-output requires --szz")
 
     repo = Path(args.repo).expanduser().resolve()
     if not (repo / ".git").exists():
@@ -54,6 +72,9 @@ def main() -> None:
 
     if args.bug_fixes:
         print_bug_fix_summary(str(repo), args.cutoff, args.top)
+        return
+    if args.szz:
+        print_szz_summary(str(repo), args.cutoff, args.top, args.szz_output)
         return
 
     analysis = analyze_repo(str(repo), args.cutoff)
@@ -102,6 +123,43 @@ def print_bug_fix_summary(repo: str, cutoff, examples: int) -> None:
                 f"  +{c.added}/-{c.deleted}  {c.subject[:72]}"
             )
             print(f"            evidence: {', '.join(c.evidence)}")
+
+
+def print_szz_summary(repo: str, cutoff, examples: int, output: str | None) -> None:
+    results = trace_repo(repo, cutoff=cutoff)
+    records = [r for result in results for r in result.records]
+    traced = [r for r in results if r.records]
+    errors = Counter(r.error for r in results if r.error)
+    skipped = Counter(s.reason.split(":")[0] for r in results for s in r.skipped)
+    inducing = {r.inducing_hash for r in records}
+
+    print(f"Likely bug-fix commits:          {len(results)}")
+    print(f"  traced to >=1 earlier commit:  {len(traced)}")
+    print(f"  no traceable deleted lines:    {len(results) - len(traced) - sum(errors.values())}")
+    for reason, n in errors.items():
+        print(f"  not traced ({reason}): {n}")
+    print(f"Candidate bug-inducing commits:  {len(inducing)} distinct")
+    print(f"Trace records (fix, inducing, file): {len(records)}")
+    if skipped:
+        print("Files skipped:")
+        for reason, n in skipped.most_common():
+            print(f"  {n:>5}  {reason}")
+    print("Candidates come from git blame heuristics; they do not prove which commit caused a bug.")
+
+    if output:
+        written = write_jsonl(results, output)
+        print(f"\nWrote {written} records to {output}")
+
+    if records:
+        print(f"\nExamples ({min(examples, len(records))} of {len(records)}):")
+        for r in records[-examples:][::-1]:
+            first = r.lines[0]
+            date = f"{r.inducing_date:%Y-%m-%d}" if r.inducing_date else "unknown date"
+            print(
+                f"  fix {r.fix_hash[:8]} <- {r.inducing_hash[:8]}"
+                f" ({date})  {r.path}  {len(r.lines)} line(s)"
+            )
+            print(f"      line {first.fix_parent_line}: {first.content.strip()[:80]}")
 
 
 if __name__ == "__main__":
