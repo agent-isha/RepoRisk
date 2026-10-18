@@ -23,9 +23,11 @@ MIN_COCHANGES_FOR_COUPLING = 2
 
 @dataclass(frozen=True)
 class FileChange:
-    path: str
+    path: str  # new path, or the old path when the file was deleted
     added: int
     deleted: int
+    old_path: str | None = None
+    change_type: str = "MODIFY"  # ADD, MODIFY, RENAME, DELETE, ...
 
 
 @dataclass(frozen=True)
@@ -90,7 +92,13 @@ def read_commits(repo_path: str) -> list[CommitRecord]:
     for commit in Repository(repo_path, only_no_merge=True).traverse_commits():
         changes = tuple(
             # new_path is None when a file is deleted
-            FileChange(mf.new_path or mf.old_path, mf.added_lines, mf.deleted_lines)
+            FileChange(
+                mf.new_path or mf.old_path,
+                mf.added_lines,
+                mf.deleted_lines,
+                mf.old_path,
+                mf.change_type.name,
+            )
             for mf in commit.modified_files
         )
         records.append(

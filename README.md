@@ -20,6 +20,7 @@ python -m reporisk /path/to/repo --top 15
 | `--bug-fixes` | Instead of the ranking, summarize heuristic bug-fix commit candidates. `--top N` sets examples per outcome; `--cutoff` also applies |
 | `--szz` | Instead of the ranking, trace `likely_bug_fix` commits back to candidate bug-inducing commits. `--top N` sets examples; `--cutoff` limits which fixes are traced |
 | `--szz-output FILE.jsonl` | With `--szz`, also write one JSON record per trace. `*.jsonl` is git-ignored |
+| `--build-dataset` | Instead of the ranking, build the leakage-safe prediction dataset (see [Prediction dataset](#prediction-dataset)) |
 
 Run the tests:
 
@@ -191,3 +192,110 @@ Each fix's `TraceResult` also lists the files that were skipped and why, or an `
 - **Comment detection is prefix-based.** `#` also matches C preprocessor lines such as `#include`, so drop it from `comment_prefixes` for C/C++ repositories. Block-comment bodies that don't start with `*` are not detected.
 - **Rename chains are followed only by blame itself.** Blame follows renames within a file's history, but not splits or merges of files.
 - **No time check against the bug report.** Classic SZZ refinements discard candidates dated after the bug was reported; there is no issue-tracker data here to do that.
+
+## Prediction dataset
+
+`reporisk/dataset.py` builds a file-level CSV for predicting **which files will receive a bug-fix commit in the next N days**. No model is trained here.
+
+```bash
+# defaults: 90-day snapshots, 90-day horizon, source files only, output/dataset.csv
+python -m reporisk /path/to/repo --build-dataset --exclude-tests
+
+# monthly snapshots, 60-day horizon, custom output path
+python -m reporisk /path/to/repo --build-dataset --exclude-tests \
+    --snapshot-interval 30 --horizon 60 --dataset-out output/requests_30_60.csv
+```
+
+| Option | Default | Effect |
+|---|---|---|
+| `--dataset-out FILE.csv` | `output/dataset.csv` | CSV path. Metadata goes beside it as `FILE.meta.json`. Parent directories are created. Writing inside the analyzed repository is refused |
+| `--snapshot-interval DAYS` | 90 | Days between snapshot dates |
+| `--horizon DAYS` | 90 | Length of the future label window |
+| `--first-snapshot DATE` | first commit + one interval | First snapshot date (`YYYY-MM-DD`) |
+| `--cutoff DATE` | latest commit | End of observed history. Later commits are ignored entirely |
+| `--label-uncertain` | off | Also count `uncertain` bug-fix commits as label events |
+| `--include-incomplete` | off | Keep snapshots whose future window isn't fully observed, with **blank** labels |
+| `--all-file-types` | off | Rows for every file type, not only source code |
+| `--exclude-tests`, `--include-docs`, `--exclude GLOB` | as for the ranking | Which files become rows |
+
+Generated datasets are git-ignored (`output/`, `*.csv`, `*.meta.json`).
+
+### Rows and snapshots
+
+Each row is one **(snapshot date T, file)** pair. The snapshot instant is the end of day T in UTC, the same meaning as `--cutoff`. A file is a row at T when all of these hold:
+- it exists at T, after replaying every add, rename and delete up to T;
+- it has a source-code extension, unless `--all-file-types` is given;
+- it passes the noise, doc and test filters.
+
+Snapshots are taken every `--snapshot-interval` days instead of at every commit. Per-commit samples would produce thousands of near-duplicate rows of the same file.
+
+The default interval equals the horizon, so consecutive label windows don't overlap and one future fix is never counted in two snapshots. Rows of the same file across snapshots are still correlated. **Split train and test by snapshot date** (train on earlier snapshots, test on later ones), never by random row.
+
+### Columns
+
+**ID columns** (not features): `snapshot_date`, `path`.
+
+**Features.** All are computed only from commits dated at or before T:
+
+| Column | Meaning |
+|---|---|
+| `commits` | Commits that touched the file |
+| `lines_added`, `lines_deleted`, `churn` | Line totals; churn = added + deleted |
+| `churn_30d`, `churn_90d`, `churn_180d` | Churn in the last N days before T |
+| `authors` | Distinct author emails |
+| `author_hhi` | Ownership concentration (1.0 = one author) |
+| `coupled_files`, `strongest_coupling` | Files it co-changes with at least twice, and its strongest co-change ratio |
+| `age_days` | Days since the file first appeared (under its current path) |
+| `days_since_last_change` | Days since its last commit |
+| `past_bug_fixes` | Qualifying bug-fix commits that touched it up to T |
+
+**Label columns.** These are derived from the future and must never be model inputs:
+
+| Column | Meaning |
+|---|---|
+| `label` | 1 if a qualifying bug-fix commit in `(T, T + horizon]` changed the file's content; 0 if none did; blank if the window is incomplete |
+| `window_complete` | 1 when the whole window lies before the last observed commit |
+| `label_fix_count`, `label_fix_commits` | How many qualifying fixes, and their short hashes (for auditing) |
+| `deleted_in_window` | 1 if the file was deleted during the window |
+
+The metadata JSON records:
+- the column groups (`id_columns`, `feature_columns`, `label_columns`);
+- the configuration and the repository's HEAD commit;
+- snapshot dates, row and positive counts per snapshot;
+- the label definition and known limitations.
+
+### Leakage safeguards
+
+- **Only past commits reach the feature code.** Commits are sorted by date and split at T; `compute_stats` receives just the commits dated at or before T. A test changes, adds and deletes future commits and asserts every feature column stays identical.
+- **Files that appear after T are never rows.** Only files that exist at T are used.
+- **`past_bug_fixes` counts only fixes dated at or before T.** Bug-fix classification looks at a single commit's own message and files, so classifying past commits uses no future information.
+- **SZZ output is not used,** for features or for labels.
+- **Label fields are kept apart.** They are listed separately in the CSV and the metadata; feature column names never contain "label" or "future", and a test checks the groups don't overlap.
+- **No fake negatives.** A window that runs past the last observed commit is never labelled 0: the snapshot is dropped, or kept with a blank label if `--include-incomplete` is given.
+- **Window edges are tested.** A fix exactly at T counts as past; one microsecond later it is future. The window end is inclusive.
+
+### Renames, deletions and edge cases
+
+| Case | Handling |
+|---|---|
+| Renamed **inside** the window | Followed: a fix to `new.py` after `old.py → new.py` labels the `old.py` row |
+| Renamed **before** T | The row uses the new path. Features cover history since the rename only (history is split at renames) |
+| Deleted before T | Not a row |
+| Deleted inside the window | Row kept, `deleted_in_window = 1`; label reflects fixes before the deletion |
+| A fix that only deletes a file, or a pure rename | Not a label event for that file (no content change) |
+| Commit with no date | Skipped and counted in the metadata (`commits_skipped_missing_date`) |
+| Naive (timezone-less) dates | Treated as UTC |
+| Empty repository, or no snapshot fits | Empty CSV (header only), with a metadata note |
+| Path that isn't a git repository | Error |
+
+### Label limitations
+
+- **Labels are heuristic.** A 1 means a commit that *looks like* a bug fix, based on its message and files, changed this file. It is not a verified defect.
+  - Fixes with vague messages are missed, which creates false 0s.
+  - Mislabelled commits create false 1s.
+  - Measure the detector's precision on a hand-labelled sample before trusting results.
+- **Every file a fix touches gets a positive,** including incidental ones (shared helpers, `__init__.py`).
+- **Activity bias.** Busy eras and busy files produce more labels; on `psf/requests` the positive rate falls sharply in later years.
+- **SZZ candidates are not proven causes of bugs,** which is why they are not part of the label.
+- **Observation end is the last commit, not "today".** A repository that is simply quiet looks fully observed up to its last commit.
+- **Merge commits are excluded** (as everywhere in RepoRisk), and history is replayed in committer-date order, which can differ from topological order on rebased or branchy history.
