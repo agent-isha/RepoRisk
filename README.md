@@ -2,6 +2,8 @@
 
 Mines a local git repository's history and ranks files by risk signals: churn, recent activity, ownership concentration and change coupling.
 
+It can be used from the command line (below) or through a local web dashboard backed by a FastAPI service. See **[DEVELOPMENT.md](DEVELOPMENT.md)** for setup, startup commands, the API reference and troubleshooting.
+
 ## Usage
 
 ```bash
@@ -299,3 +301,122 @@ The metadata JSON records:
 - **SZZ candidates are not proven causes of bugs,** which is why they are not part of the label.
 - **Observation end is the last commit, not "today".** A repository that is simply quiet looks fully observed up to its last commit.
 - **Merge commits are excluded** (as everywhere in RepoRisk), and history is replayed in committer-date order, which can differ from topological order on rebased or branchy history.
+
+## Training and evaluation
+
+`reporisk/model.py` trains and evaluates future bug-fix prediction on a dataset built with `--build-dataset`. It is a separate command, so the main CLI is unchanged:
+
+```bash
+python -m reporisk ~/test-repos/requests --build-dataset --exclude-tests \
+    --snapshot-interval 30 --horizon 60 --dataset-out output/requests_30_60.csv
+python -m reporisk.model output/requests_30_60.csv
+```
+
+| Option | Default | Effect |
+|---|---|---|
+| `--out-dir DIR` | `output/model` | Where `metrics.json` and `predictions.csv` go (git-ignored) |
+| `--test-fraction F` | 0.25 | Share of the **latest snapshot dates** used as the test set |
+| `--test-start DATE` | — | First test snapshot date; overrides `--test-fraction` |
+| `--purge-days N` | horizon from metadata | Drop training rows whose label window reaches the test period. Required if there's no `.meta.json` |
+| `--top-k K …` | `10 20 50` | K values for precision@K and recall@K |
+| `--no-logreg` | off | Run only the churn baseline |
+| `--metadata FILE` | `<dataset>.meta.json` | Metadata path |
+
+### Dependencies
+
+The data validation, chronological split, preprocessing, churn baseline and **all metrics** use only the Python standard library.
+
+The logistic regression needs scikit-learn and is **optional**:
+
+```bash
+pip install -r requirements-ml.txt
+```
+
+`requirements-ml.txt` pins `scikit-learn>=1.3,<1.7`, because scikit-learn 1.7+ (and numpy 2.1+) require Python ≥ 3.10, and this project's venv uses Python 3.9. Without scikit-learn, the logistic regression is reported as `skipped: scikit-learn is not installed` and the baseline still runs. pandas is not used.
+
+### Pipeline
+
+1. **Load and validate.**
+   - `snapshot_date`, `path` and `label` must exist.
+   - Labels must be `0`, `1` or blank; blank or incomplete-window rows are dropped and counted.
+   - Cells that are blank, non-numeric, NaN or inf become missing values.
+2. **Select features.** Only columns in the code's allowlist (`reporisk/schema.py: FEATURE_COLUMNS`) are used, narrowed to the metadata's `feature_columns`.
+   - Any column that is an ID, a label column, or whose name contains `label`, `future`, `window` or `deleted_in` is refused.
+   - Metadata that lists such a column as a feature is an error.
+   - `path` is not a feature: a raw file name would let the model memorise specific files instead of learning risk patterns.
+3. **Split chronologically.**
+   - The latest 25% of snapshot dates form the test set, and one date is never split across train and test.
+   - **Purging:** training rows with `snapshot + purge_days > test start` are dropped, because their labels come from commits inside the test period.
+4. **Preprocess,** fitted on training rows only:
+   - median imputation;
+   - `log1p` on count and day features (all except `author_hhi` and `strongest_coupling`);
+   - standardization.
+5. **Score the same test rows twice:**
+   - **churn baseline:** rank by historical `churn`; missing churn ranks last;
+   - **logistic regression:** class-balanced L2 (`class_weight="balanced"`, `random_state=0`).
+
+   Both flag the same number of rows as positive: `round(training prevalence × test rows)`. That gives the two scorers an equal alert budget.
+6. **Write** `metrics.json` and `predictions.csv`.
+   - `metrics.json` holds the split details, features, warnings and per-model metrics, plus logistic-regression coefficients.
+   - `predictions.csv` has one row per test row with both scores and ranks.
+   - No model binary is saved.
+
+### Metrics
+
+| Metric | Notes |
+|---|---|
+| Precision, recall, F1, confusion matrix | At the shared alert budget. Logistic regression also reports them at probability 0.5 (`at_probability_0_5`) |
+| PR-AUC | Average precision, step-wise like scikit-learn (verified against it in tests). Compare it to the test **prevalence**, which is what random ranking scores |
+| ROC-AUC | Ties count half |
+| Precision@K, Recall@K | Over all test rows pooled across test snapshots |
+| Prevalence | Share of positive test rows |
+
+**Undefined metrics are `null`, never 0:**
+- precision when nothing is flagged;
+- recall, PR-AUC and ROC-AUC when the test set has no positives (ROC-AUC also needs at least one negative);
+- @K when K exceeds the number of rows.
+
+A single-class split, or fewer than 10 positives in either split, produces a warning.
+
+### First results on `psf/requests`
+
+From `requests_30_60.csv`: 3,245 rows, 30-day snapshots, 60-day horizon. With the default split:
+
+| | Train | Test |
+|---|---|---|
+| Snapshots | 2011-03 … 2022-07 | 2022-09 … 2026-06 |
+| Rows | 2,331 | 895 |
+| Positives | 219 (9.4%) | **6 (0.7%)** |
+
+| Model | PR-AUC | ROC-AUC | Precision@10 |
+|---|---|---|---|
+| churn baseline | 0.015 | 0.552 | 0.0 |
+| logistic regression | 0.010 | 0.593 | 0.0 |
+
+**With only 6 positive test rows, these numbers cannot tell the models apart.** The project's late years are quiet, so the training prevalence (9.4%) is far above the test prevalence (0.7%), and both models flag 84 rows to find a handful of positives.
+
+Exploratory splits with earlier test periods, chosen after seeing the default result (so not a tuned benchmark):
+
+| Test from | Test positives | Churn PR-AUC | Logistic regression PR-AUC | Churn ROC-AUC | Logistic regression ROC-AUC |
+|---|---|---|---|---|---|
+| 2016-01-01 | 69 | 0.094 | 0.219 | 0.761 | 0.807 |
+| 2019-01-01 | 32 | 0.064 | 0.114 | 0.731 | 0.772 |
+
+These suggest the features carry signal beyond churn alone. A single repository and a single split are not enough to call that a reliable result.
+
+### Labels vs. confirmed defects
+
+The target is **"a commit that the heuristic detector classifies as a likely bug fix changed this file within the horizon"**. It is not "this file contained a confirmed defect".
+- The detector misses fixes with vague messages, which become false negatives.
+- It mislabels some commits, which become false positives.
+- Every file a fix touched counts, including incidental ones.
+
+A high score therefore means "resembles files that historically received fix-like commits". Before treating metrics as defect-prediction quality, hand-label a sample of fix commits to measure the detector's precision.
+
+### Training limitations
+
+- **Distribution shift over time.** Prevalence falls from about 23% (2011–15) to about 2% (2021–26) on `requests`, so a model trained on the busy years is miscalibrated for recent ones. Precision at a fixed budget suffers most.
+- **Rows are correlated.** The same file appears in every snapshot, and with a 30-day interval and a 60-day horizon, label windows overlap. Purging guards the train/test boundary, but within each split the rows are not independent.
+- **@K is pooled.** Precision@K is computed over all test snapshots together. A per-snapshot @K ("the top 10 files this month") would match day-to-day use better.
+- **No hyperparameter tuning or calibration yet,** and no validation split inside the training period. Add one before tuning anything, so the test set stays untouched.
+- **One repository.** Results from `requests` do not generalise to other projects.

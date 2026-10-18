@@ -1,0 +1,107 @@
+{
+  "analysis_id": "f815bdce54ae",
+  "repository": {
+    "id": "demo-repo",
+    "name": "demo-repo",
+    "head_commit": "828495fa7a1c47e004286e561c23edec4f950ca4"
+  },
+  "completed_at": "2026-10-18T09:32:15.902836Z",
+  "observation_start": "2024-01-01T10:00:00Z",
+  "observation_end": "2024-08-26T10:00:00Z",
+  "commits_analyzed": 120,
+  "files_analyzed": 5,
+  "files_touched_total": 7,
+  "risk_counts": {
+    "high": 1,
+    "medium": 3,
+    "low": 1
+  },
+  "risk_level_definitions": [
+    {
+      "code": "high",
+      "label": "High",
+      "rule": "3 or more risk factors"
+    },
+    {
+      "code": "medium",
+      "label": "Medium",
+      "rule": "1 to 2 risk factors"
+    },
+    {
+      "code": "low",
+      "label": "Low",
+      "rule": "no risk factors"
+    }
+  ],
+  "risk_factor_definitions": [
+    {
+      "code": "high_churn",
+      "label": "High churn",
+      "rule": "Total lines added + deleted is in the top 10% of files"
+    },
+    {
+      "code": "frequent_changes",
+      "label": "Frequent changes",
+      "rule": "Commit count is in the top 10% of files"
+    },
+    {
+      "code": "recent_churn",
+      "label": "Recent churn",
+      "rule": "Churn in the last 90 days is above zero and in the top 10% of files"
+    },
+    {
+      "code": "bug_fix_history",
+      "label": "Bug-fix history",
+      "rule": "Touched by at least 2 commits classified as likely bug fixes"
+    },
+    {
+      "code": "concentrated_ownership",
+      "label": "Concentrated ownership",
+      "rule": "At least 10 commits and author HHI >= 0.75 (mostly one author)"
+    },
+    {
+      "code": "strong_coupling",
+      "label": "Strong coupling",
+      "rule": "At least 5 commits and >= 50% of them also change one partner file"
+    }
+  ],
+  "bug_fix_counts": {
+    "likely_bug_fix": 24,
+    "uncertain": 0,
+    "not_likely_bug_fix": 96
+  },
+  "szz": {
+    "status": "completed",
+    "reason": null,
+    "fixes_traced": 24,
+    "fixes_with_candidates": 24,
+    "inducing_commits": 14,
+    "records": 24
+  },
+  "dataset": {
+    "status": "built",
+    "reason": null,
+    "rows": 35,
+    "labelled_rows": 30,
+    "positives": 10,
+    "snapshots_complete": 6,
+    "snapshots_incomplete": 1
+  },
+  "model": {
+    "status": "available",
+    "reason": null,
+    "scored_snapshot": "2024-07-29"
+  },
+  "timings_seconds": {
+    "reading_history": 1.84,
+    "computing_features": 0.0,
+    "detecting_bug_fixes": 0.02,
+    "tracing_szz": 0.81,
+    "building_dataset": 0.02,
+    "training_model": 0.01
+  },
+  "warnings": [
+    "train set has only 7 positives; metrics are unstable",
+    "test set has only 3 positives; metrics are unstable"
+  ]
+}

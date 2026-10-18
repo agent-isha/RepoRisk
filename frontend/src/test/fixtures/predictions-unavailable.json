@@ -1,0 +1,19 @@
+{
+  "analysis_id": "0d236b3574fe",
+  "status": "unavailable",
+  "reason": "model training was disabled in analysis options",
+  "scored_snapshot": null,
+  "trained_on_rows": null,
+  "trained_on_positives": null,
+  "horizon_days": 30,
+  "evaluation": null,
+  "evaluation_unavailable_reason": null,
+  "predictions": [],
+  "label_note": "Labels mark files touched by commits that a heuristic classifies as likely bug fixes. They are not confirmed defects; metrics measure agreement with that heuristic.",
+  "limitations": [
+    "Probabilities come from a logistic regression trained on this repository's own history; they are not validated defect predictions.",
+    "The target is 'a commit classified as a likely bug fix touches this file within the horizon', which includes missed and mislabelled fixes.",
+    "Check the chronological evaluation before relying on the ranking; with few test positives the metrics are unstable.",
+    "Scores describe the latest dataset snapshot, which can be up to one snapshot interval older than the latest commit."
+  ]
+}

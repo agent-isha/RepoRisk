@@ -12,5 +12,18 @@ output/
 *.jsonl
 *.meta.json
 
+# Model artifacts
+metrics.json
+*.pkl
+*.joblib
+
 # OS
 .DS_Store
+
+# Environment files
+.env.*
+!.env.example
+
+# Frontend
+frontend/node_modules/
+frontend/dist/

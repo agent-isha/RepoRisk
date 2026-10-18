@@ -1,0 +1,109 @@
+{
+  "analysis_id": "f815bdce54ae",
+  "status": "available",
+  "reason": null,
+  "scored_snapshot": "2024-07-29",
+  "trained_on_rows": 30,
+  "trained_on_positives": 10,
+  "horizon_days": 30,
+  "evaluation": {
+    "method": "chronological by snapshot_date",
+    "test_start": "2024-05-30",
+    "train_rows": 20,
+    "train_positives": 7,
+    "test_rows": 10,
+    "test_positives": 3,
+    "test_prevalence": 0.3,
+    "purged_train_rows": 0,
+    "models": [
+      {
+        "name": "churn_baseline",
+        "status": "trained",
+        "reason": null,
+        "description": "rank by historical churn; top 4 flagged",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "pr_auc": 0.24761904761904763,
+        "roc_auc": 0.07142857142857142,
+        "flagged": 4,
+        "precision_at_k": {
+          "10": 0.3,
+          "20": null,
+          "50": null
+        },
+        "recall_at_k": {
+          "10": 1.0,
+          "20": null,
+          "50": null
+        }
+      },
+      {
+        "name": "logistic_regression",
+        "status": "trained",
+        "reason": null,
+        "description": "class-balanced L2 logistic regression on standardized log1p features; top 4 flagged",
+        "precision": 0.25,
+        "recall": 0.3333333333333333,
+        "f1": 0.28571428571428575,
+        "pr_auc": 0.3888888888888889,
+        "roc_auc": 0.47619047619047616,
+        "flagged": 4,
+        "precision_at_k": {
+          "10": 0.3,
+          "20": null,
+          "50": null
+        },
+        "recall_at_k": {
+          "10": 1.0,
+          "20": null,
+          "50": null
+        }
+      }
+    ],
+    "warnings": [
+      "train set has only 7 positives; metrics are unstable",
+      "test set has only 3 positives; metrics are unstable"
+    ]
+  },
+  "evaluation_unavailable_reason": null,
+  "predictions": [
+    {
+      "rank": 1,
+      "path": "src/models.py",
+      "probability": 0.874795,
+      "heuristic_risk_level": "medium"
+    },
+    {
+      "rank": 2,
+      "path": "src/core.py",
+      "probability": 0.466879,
+      "heuristic_risk_level": "high"
+    },
+    {
+      "rank": 3,
+      "path": "src/cli.py",
+      "probability": 0.440771,
+      "heuristic_risk_level": "low"
+    },
+    {
+      "rank": 4,
+      "path": "src/io.py",
+      "probability": 0.152855,
+      "heuristic_risk_level": "medium"
+    },
+    {
+      "rank": 5,
+      "path": "src/utils.py",
+      "probability": 0.066323,
+      "heuristic_risk_level": "medium"
+    }
+  ],
+  "label_note": "Labels mark files touched by commits that a heuristic classifies as likely bug fixes. They are not confirmed defects; metrics measure agreement with that heuristic.",
+  "limitations": [
+    "Probabilities come from a logistic regression trained on this repository's own history; they are not validated defect predictions.",
+    "The target is 'a commit classified as a likely bug fix touches this file within the horizon', which includes missed and mislabelled fixes.",
+    "Check the chronological evaluation before relying on the ranking; with few test positives the metrics are unstable.",
+    "Scores describe the latest dataset snapshot, which can be up to one snapshot interval older than the latest commit."
+  ]
+}

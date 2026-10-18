@@ -1,0 +1,142 @@
+{
+  "analysis_id": "f815bdce54ae",
+  "total": 5,
+  "offset": 0,
+  "limit": 1000,
+  "items": [
+    {
+      "path": "src/core.py",
+      "risk_level": "high",
+      "risk_factors": [
+        {
+          "code": "high_churn",
+          "label": "High churn",
+          "detail": "68 lines changed (top-10% threshold: 68)"
+        },
+        {
+          "code": "frequent_changes",
+          "label": "Frequent changes",
+          "detail": "29 commits (top-10% threshold: 29)"
+        },
+        {
+          "code": "bug_fix_history",
+          "label": "Bug-fix history",
+          "detail": "11 likely bug-fix commits touched this file"
+        }
+      ],
+      "churn": 68,
+      "lines_added": 40,
+      "lines_deleted": 28,
+      "commits": 29,
+      "authors": 3,
+      "author_hhi": 0.338882,
+      "churn_30d": 6,
+      "churn_90d": 16,
+      "churn_180d": 42,
+      "coupled_files": 1,
+      "strongest_coupling": 0.344828,
+      "top_partner": "tests/test_core.py",
+      "bug_fix_commits": 11,
+      "first_seen": "2024-01-01T10:00:00Z",
+      "last_changed": "2024-08-24T10:00:00Z"
+    },
+    {
+      "path": "src/utils.py",
+      "risk_level": "medium",
+      "risk_factors": [
+        {
+          "code": "bug_fix_history",
+          "label": "Bug-fix history",
+          "detail": "3 likely bug-fix commits touched this file"
+        }
+      ],
+      "churn": 62,
+      "lines_added": 37,
+      "lines_deleted": 25,
+      "commits": 26,
+      "authors": 3,
+      "author_hhi": 0.352071,
+      "churn_30d": 4,
+      "churn_90d": 16,
+      "churn_180d": 38,
+      "coupled_files": 1,
+      "strongest_coupling": 0.384615,
+      "top_partner": "tests/test_core.py",
+      "bug_fix_commits": 3,
+      "first_seen": "2024-01-01T10:00:00Z",
+      "last_changed": "2024-08-22T10:00:00Z"
+    },
+    {
+      "path": "src/io.py",
+      "risk_level": "medium",
+      "risk_factors": [
+        {
+          "code": "recent_churn",
+          "label": "Recent churn",
+          "detail": "24 lines changed in the last 90 days"
+        }
+      ],
+      "churn": 60,
+      "lines_added": 36,
+      "lines_deleted": 24,
+      "commits": 25,
+      "authors": 3,
+      "author_hhi": 0.3856,
+      "churn_30d": 8,
+      "churn_90d": 24,
+      "churn_180d": 40,
+      "coupled_files": 1,
+      "strongest_coupling": 0.28,
+      "top_partner": "tests/test_core.py",
+      "bug_fix_commits": 1,
+      "first_seen": "2024-01-01T10:00:00Z",
+      "last_changed": "2024-08-26T10:00:00Z"
+    },
+    {
+      "path": "src/models.py",
+      "risk_level": "medium",
+      "risk_factors": [
+        {
+          "code": "bug_fix_history",
+          "label": "Bug-fix history",
+          "detail": "9 likely bug-fix commits touched this file"
+        }
+      ],
+      "churn": 52,
+      "lines_added": 32,
+      "lines_deleted": 20,
+      "commits": 21,
+      "authors": 3,
+      "author_hhi": 0.337868,
+      "churn_30d": 6,
+      "churn_90d": 16,
+      "churn_180d": 28,
+      "coupled_files": 1,
+      "strongest_coupling": 0.238095,
+      "top_partner": "tests/test_core.py",
+      "bug_fix_commits": 9,
+      "first_seen": "2024-01-01T10:00:00Z",
+      "last_changed": "2024-08-12T10:00:00Z"
+    },
+    {
+      "path": "src/cli.py",
+      "risk_level": "low",
+      "risk_factors": [],
+      "churn": 56,
+      "lines_added": 34,
+      "lines_deleted": 22,
+      "commits": 23,
+      "authors": 3,
+      "author_hhi": 0.338374,
+      "churn_30d": 6,
+      "churn_90d": 18,
+      "churn_180d": 32,
+      "coupled_files": 1,
+      "strongest_coupling": 0.217391,
+      "top_partner": "tests/test_core.py",
+      "bug_fix_commits": 0,
+      "first_seen": "2024-01-01T10:00:00Z",
+      "last_changed": "2024-08-18T10:00:00Z"
+    }
+  ]
+}

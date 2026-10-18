@@ -1,0 +1,383 @@
+{
+  "analysis_id": "f815bdce54ae",
+  "total": 24,
+  "offset": 0,
+  "limit": 8,
+  "outcome_counts": {
+    "likely_bug_fix": 24,
+    "uncertain": 0,
+    "not_likely_bug_fix": 96
+  },
+  "szz": {
+    "status": "completed",
+    "reason": null,
+    "fixes_traced": 24,
+    "fixes_with_candidates": 24,
+    "inducing_commits": 14,
+    "records": 24
+  },
+  "items": [
+    {
+      "hash": "bab2ec63e3ad2270ad55f28004dc649c9aa6ed5b",
+      "subject": "Fix crash in core.py when input is empty",
+      "message": "Fix crash in core.py when input is empty",
+      "timestamp": "2024-08-24T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/core.py",
+          "added": 1,
+          "deleted": 1
+        },
+        {
+          "path": "tests/test_core.py",
+          "added": 1,
+          "deleted": 0
+        }
+      ],
+      "added": 2,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": "skipped files: 1 test file",
+      "szz_records": [
+        {
+          "inducing_hash": "b7c54ae5d8a404a4fb7cefad64e562e9fd469796",
+          "inducing_date": "2024-04-12T10:00:00Z",
+          "path": "src/core.py",
+          "lines": [
+            {
+              "fix_parent_line": 3,
+              "inducing_line": 3,
+              "content": "value_2 = 176  # rev 51"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on 8186092dde attributes them to b7c54ae5d8"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "70e0250329ae4420c6c3005f708a9d1b9878d9eb",
+      "subject": "Fix crash in models.py when input is empty",
+      "message": "Fix crash in models.py when input is empty",
+      "timestamp": "2024-08-12T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/models.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "809b32ff3c4a486423e256b0a024c94dfe7ca990",
+          "inducing_date": "2024-06-15T10:00:00Z",
+          "path": "src/models.py",
+          "lines": [
+            {
+              "fix_parent_line": 5,
+              "inducing_line": 5,
+              "content": "value_4 = 223  # rev 83"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on ab3672e325 attributes them to 809b32ff3c"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "ab3672e325634f1b17e2dce3fc307828bbd4bc13",
+      "subject": "Fix crash in core.py when input is empty",
+      "message": "Fix crash in core.py when input is empty",
+      "timestamp": "2024-08-10T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/core.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "ecd7560f40a2e8a9697b67a57fc620189d243b75",
+          "inducing_date": "2024-08-04T10:00:00Z",
+          "path": "src/core.py",
+          "lines": [
+            {
+              "fix_parent_line": 1,
+              "inducing_line": 1,
+              "content": "value_0 = 332  # rev 108"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on e38c316175 attributes them to ecd7560f40"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "2b9638f3bb24aec9efe50ad1c85a73a995e16e3e",
+      "subject": "Fix crash in models.py when input is empty",
+      "message": "Fix crash in models.py when input is empty",
+      "timestamp": "2024-07-03T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/models.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "4b8b7758f4b2fdd0279ec80270b8d01c24db48e5",
+          "inducing_date": "2024-02-14T10:00:00Z",
+          "path": "src/models.py",
+          "lines": [
+            {
+              "fix_parent_line": 1,
+              "inducing_line": 1,
+              "content": "value_0 = 149  # rev 22"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on 597f19cb15 attributes them to 4b8b7758f4"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "bc44b25f2c52bfc635e5c8fb7923f4b2315b534e",
+      "subject": "Fix crash in io.py when input is empty",
+      "message": "Fix crash in io.py when input is empty",
+      "timestamp": "2024-06-21T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/io.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "2b646794697469d4c9a2030d6327797a51362183",
+          "inducing_date": "2024-04-18T10:00:00Z",
+          "path": "src/io.py",
+          "lines": [
+            {
+              "fix_parent_line": 1,
+              "inducing_line": 1,
+              "content": "value_0 = 778  # rev 54"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on 79713cef28 attributes them to 2b64679469"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "809b32ff3c4a486423e256b0a024c94dfe7ca990",
+      "subject": "Fix crash in models.py when input is empty",
+      "message": "Fix crash in models.py when input is empty",
+      "timestamp": "2024-06-15T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/models.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "e808e5ddf5cf5cbdd30c969ae8a0a3b212e9803b",
+          "inducing_date": "2024-01-21T10:00:00Z",
+          "path": "src/models.py",
+          "lines": [
+            {
+              "fix_parent_line": 5,
+              "inducing_line": 5,
+              "content": "value_4 = 537  # rev 10"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on efebbaed00 attributes them to e808e5ddf5"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "56d747f3bdc105f226ba034d3b9a4885203b8ef4",
+      "subject": "Fix crash in utils.py when input is empty",
+      "message": "Fix crash in utils.py when input is empty",
+      "timestamp": "2024-05-26T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/utils.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "35b6ef682ababe02225e80cd8bd1315acfad2d91",
+          "inducing_date": "2024-04-24T10:00:00Z",
+          "path": "src/utils.py",
+          "lines": [
+            {
+              "fix_parent_line": 4,
+              "inducing_line": 4,
+              "content": "value_3 = 860  # rev 57"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on 987d94c11c attributes them to 35b6ef682a"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    },
+    {
+      "hash": "dad7b5933e5858cd55225364f0ef0f3680149433",
+      "subject": "Fix crash in core.py when input is empty",
+      "message": "Fix crash in core.py when input is empty",
+      "timestamp": "2024-05-22T10:00:00Z",
+      "outcome": "likely_bug_fix",
+      "evidence": [
+        "strong:crash",
+        "weak:fix"
+      ],
+      "files": [
+        {
+          "path": "src/core.py",
+          "added": 1,
+          "deleted": 1
+        }
+      ],
+      "added": 1,
+      "deleted": 1,
+      "szz_status": "traced",
+      "szz_note": null,
+      "szz_records": [
+        {
+          "inducing_hash": "3d556a059f48ff4c48b63a980e60feb5872bd2ba",
+          "inducing_date": "2024-01-07T10:00:00Z",
+          "path": "src/core.py",
+          "lines": [
+            {
+              "fix_parent_line": 9,
+              "inducing_line": 9,
+              "content": "value_8 = 434  # rev 3"
+            }
+          ],
+          "evidence": [
+            "fix deleted or changed 1 line(s) in this source file",
+            "git blame -w on c75e30526a attributes them to 3d556a059f"
+          ],
+          "limitations": [
+            "git blame finds the last commit to change the line, which may not be the commit that introduced the bug",
+            "whitespace-only changes were ignored by blame"
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Bug-fix outcomes are heuristic classifications of commit messages and changed files, not verified defects.",
+    "SZZ candidates are the commits that last touched lines a fix changed. They do not prove which commit introduced a bug.",
+    "Fixes that only add lines cannot be traced; merge commits are not analyzed."
+  ]
+}

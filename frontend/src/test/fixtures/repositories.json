@@ -1,0 +1,9 @@
+[
+  {
+    "id": "demo-repo",
+    "name": "demo-repo",
+    "path": "/path/to/demo-repo",
+    "available": true,
+    "reason": null
+  }
+]

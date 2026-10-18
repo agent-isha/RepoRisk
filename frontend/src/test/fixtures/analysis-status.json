@@ -1,0 +1,23 @@
+{
+  "id": "f815bdce54ae",
+  "repository_id": "demo-repo",
+  "repository_name": "demo-repo",
+  "status": "completed",
+  "stage": "training_model",
+  "stage_label": "Training and evaluating the model",
+  "stage_index": 6,
+  "stage_count": 6,
+  "message": null,
+  "error": null,
+  "created_at": "2026-10-18T09:32:13.212600Z",
+  "started_at": "2026-10-18T09:32:13.212664Z",
+  "finished_at": "2026-10-18T09:32:15.903007Z",
+  "options": {
+    "exclude_tests": true,
+    "source_only": true,
+    "horizon_days": 30,
+    "snapshot_interval_days": 30,
+    "run_szz": true,
+    "train_model": true
+  }
+}
