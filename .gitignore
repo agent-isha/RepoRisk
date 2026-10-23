@@ -3,8 +3,10 @@
 __pycache__/
 *.pyc
 
-# Secrets
+# Secrets and local state (account database)
 .env
+instance/
+*.sqlite3
 
 # Generated analysis output
 output/

@@ -1,30 +1,62 @@
-import { useCallback, useEffect, useState } from "react";
-import { API_BASE_URL, api } from "./api/client.js";
-import AnalysisControls from "./components/AnalysisControls.jsx";
-import { Badge, EmptyState, ErrorState, LoadingState } from "./components/ui.jsx";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "./api/client.js";
+import { AuthProvider, useAuth } from "./auth/AuthContext.jsx";
+import { ACTIVE, AnalysisForm, AnalysisHistory } from "./components/AnalysisControls.jsx";
+import AppShell, { NAV } from "./components/AppShell.jsx";
+import { LogoMark, PlayIcon } from "./components/icons.jsx";
+import { Button, EmptyState, ErrorState, LoadingState, PageHeader } from "./components/ui.jsx";
 import { useApi } from "./hooks/useApi.js";
+import { useHashRoute } from "./hooks/useHashRoute.js";
 import BugFixes from "./views/BugFixes.jsx";
 import FileExplorer from "./views/FileExplorer.jsx";
+import LoginPage from "./views/LoginPage.jsx";
 import Overview from "./views/Overview.jsx";
 import Predictions from "./views/Predictions.jsx";
 
-const TABS = [
-  { id: "overview", label: "Overview" },
-  { id: "files", label: "File risk explorer" },
-  { id: "predictions", label: "ML predictions" },
-  { id: "bugfixes", label: "Bug-fix insights" },
-];
+const ROUTES = NAV.map((n) => n.id);
 
-export default function App({ pollMs }) {
-  const boot = useApi(
-    () => Promise.all([api.health(), api.repositories(), api.analyses()]),
-    [],
+export default function App({ pollMs = 1500 }) {
+  return (
+    <AuthProvider>
+      <AuthGate pollMs={pollMs} />
+    </AuthProvider>
   );
+}
+
+// Nothing behind the login page renders (or fetches) until the server confirms a session.
+function AuthGate({ pollMs }) {
+  const auth = useAuth();
+  if (auth.status === "checking") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+        <LogoMark className="h-10 w-10" />
+        <LoadingState label="Checking your session…" />
+      </div>
+    );
+  }
+  if (auth.status === "error") {
+    return (
+      <div className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-4">
+        <ErrorState title="Cannot reach RepoRisk" error={auth.error} onRetry={auth.retry} />
+        <p className="mt-4 text-sm text-slate-400">
+          Start the API with <code className="font-mono text-slate-300">python -m uvicorn reporisk.api.main:app --port 8000</code>{" "}
+          (see DEVELOPMENT.md) and keep <code className="font-mono text-slate-300">npm run dev</code> running.
+        </p>
+      </div>
+    );
+  }
+  if (auth.status === "signedOut") return <LoginPage />;
+  return <Dashboard user={auth.user} onLogout={auth.logout} pollMs={pollMs} />;
+}
+
+function Dashboard({ user, onLogout, pollMs }) {
+  const [route, navigate] = useHashRoute(ROUTES, "overview");
+  const boot = useApi(() => Promise.all([api.health(), api.repositories(), api.analyses()]), []);
   const [current, setCurrent] = useState(null);
   const [analyses, setAnalyses] = useState([]);
-  const [tab, setTab] = useState("overview");
+  const [pollError, setPollError] = useState(null);
 
-  // On load, show the most recent completed analysis, or follow one still running.
+  // Show the most recent analysis that didn't fail (completed, or one still running).
   useEffect(() => {
     if (!boot.data) return;
     const list = boot.data[2];
@@ -33,98 +65,83 @@ export default function App({ pollMs }) {
   }, [boot.data]);
 
   const onStatus = useCallback((status) => {
+    setPollError(null);
     setCurrent(status);
     setAnalyses((list) => [status, ...list.filter((a) => a.id !== status.id)]);
   }, []);
 
+  useJobPolling(current, onStatus, setPollError, pollMs);
+
   const completedId = current?.status === "completed" ? current.id : null;
   const summary = useApi(completedId ? () => api.summary(completedId) : null, [completedId]);
+  const health = boot.data?.[0];
 
-  if (boot.loading) return <Shell><LoadingState label="Connecting to the RepoRisk API…" /></Shell>;
-  if (boot.error) {
-    return (
-      <Shell>
-        <ErrorState title="Cannot load RepoRisk" error={boot.error} onRetry={boot.reload} />
-        <p className="mt-4 text-sm text-slate-600">
-          The dashboard expects the API at <code className="font-mono">{API_BASE_URL}</code>. Start it with{" "}
-          <code className="font-mono">python -m uvicorn reporisk.api.app:app --port 8000</code> (see DEVELOPMENT.md),
-          or set <code className="font-mono">VITE_API_BASE_URL</code>.
-        </p>
-      </Shell>
+  let page;
+  if (boot.loading) page = <LoadingState label="Loading workspace…" />;
+  else if (boot.error) page = <ErrorState title="Could not load RepoRisk" error={boot.error} onRetry={boot.reload} />;
+  else if (route === "analyses") {
+    page = (
+      <>
+        <PageHeader title="Run analysis" description="Mine a permitted repository's git history, score file risk, detect bug fixes, trace them with SZZ, and train the model." />
+        <div className="space-y-6">
+          <AnalysisForm repositories={boot.data[1]} current={current} onStatus={onStatus} />
+          {pollError && <ErrorState title="Lost track of the running analysis" error={pollError} />}
+          <AnalysisHistory analyses={analyses} currentId={current?.id}
+                           onSelect={(a) => { setCurrent(a); navigate("overview"); }} />
+        </div>
+      </>
     );
-  }
-
-  const [health, repositories] = boot.data;
+  } else if (!completedId) {
+    const running = current && ACTIVE.has(current.status);
+    page = (
+      <EmptyState
+        icon={<PlayIcon className="h-5 w-5" />}
+        title={running ? "Results will appear when the analysis finishes" : "No analysis results yet"}
+        action={<Button onClick={() => navigate("analyses")}>{running ? "View progress" : "Run an analysis"}</Button>}
+      >
+        {running
+          ? "The analysis is running on the server. You can keep browsing; progress is shown in the header."
+          : "Choose a permitted repository and start an analysis to see risk, bug-fix and model results."}
+      </EmptyState>
+    );
+  } else if (route === "overview") {
+    page = summary.loading ? <LoadingState label="Loading summary…" />
+      : summary.error ? <ErrorState error={summary.error} onRetry={summary.reload} title="Could not load the summary" />
+        : summary.data && <Overview summary={summary.data} onNavigate={navigate} />;
+  } else if (route === "files") page = <FileExplorer analysisId={completedId} />;
+  else if (route === "predictions") page = <Predictions analysisId={completedId} />;
+  else if (route === "bug-fixes") page = <BugFixes analysisId={completedId} />;
 
   return (
-    <Shell health={health}>
-      <AnalysisControls repositories={repositories} current={current} onStatus={onStatus} pollMs={pollMs} />
-
-      {!completedId ? (
-        <div className="mt-6">
-          <EmptyState title={current ? "Results will appear when the analysis finishes" : "No analysis yet"}>
-            {current
-              ? "Analysis runs in the background on the server; you can leave this page open."
-              : "Choose a permitted repository and start an analysis to see risk, bug-fix and model results."}
-          </EmptyState>
-        </div>
-      ) : (
-        <div className="mt-6">
-          <nav aria-label="Result views" className="mb-6 flex gap-1 overflow-x-auto border-b border-slate-200">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                aria-current={tab === t.id ? "page" : undefined}
-                onClick={() => setTab(t.id)}
-                className={`whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-indigo-600 ${
-                  tab === t.id
-                    ? "border-indigo-600 text-indigo-700"
-                    : "border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-          {tab === "overview" && (
-            summary.loading ? <LoadingState label="Loading summary…" />
-              : summary.error ? <ErrorState error={summary.error} onRetry={summary.reload} title="Could not load the summary" />
-                : summary.data && (
-                  <Overview summary={summary.data} analyses={analyses} currentId={completedId}
-                            onSelectAnalysis={(a) => setCurrent(a)} onNavigate={setTab} />
-                )
-          )}
-          {tab === "files" && <FileExplorer analysisId={completedId} />}
-          {tab === "predictions" && <Predictions analysisId={completedId} />}
-          {tab === "bugfixes" && <BugFixes analysisId={completedId} />}
-        </div>
-      )}
-    </Shell>
+    <AppShell route={route} onNavigate={navigate} user={user} onLogout={onLogout} health={health} current={current}>
+      {page}
+    </AppShell>
   );
 }
 
-function Shell({ health, children }) {
-  return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-slate-900">RepoRisk</h1>
-            <p className="text-sm text-slate-500">Git-history risk analysis for local repositories</p>
-          </div>
-          {health && (
-            <div className="flex items-center gap-2 text-sm">
-              <Badge tone="success">API {health.version}</Badge>
-              <Badge tone={health.ml_available ? "info" : "neutral"}
-                     title={health.ml_available ? `scikit-learn ${health.scikit_learn_version}` : "scikit-learn is not installed"}>
-                ML {health.ml_available ? "available" : "unavailable"}
-              </Badge>
-            </div>
-          )}
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">{children}</main>
-    </div>
-  );
+// Poll the current job while it is queued or running. The loop reschedules
+// itself, so it doesn't depend on each response being a new object.
+function useJobPolling(current, onStatus, onError, pollMs) {
+  const timer = useRef(null);
+  const running = Boolean(current && ACTIVE.has(current.status));
+  const currentId = current?.id;
+  useEffect(() => {
+    if (!running) return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const status = await api.status(currentId);
+        if (cancelled) return;
+        onStatus(status);
+        if (ACTIVE.has(status.status)) timer.current = setTimeout(tick, pollMs);
+      } catch (err) {
+        if (!cancelled) onError(err);
+      }
+    };
+    timer.current = setTimeout(tick, pollMs);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer.current);
+    };
+  }, [running, currentId, onStatus, onError, pollMs]);
 }

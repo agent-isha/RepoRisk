@@ -1,5 +1,7 @@
 # Web API (python -m uvicorn reporisk.api.app:app). Versions are the newest that support Python 3.9.
 fastapi==0.128.8
 uvicorn==0.39.0
-# Used by FastAPI's TestClient in tests/test_api.py
+# Argon2id password hashing for login
+argon2-cffi==25.1.0
+# Used by FastAPI's TestClient in tests/test_api.py and tests/test_auth.py
 httpx==0.28.1

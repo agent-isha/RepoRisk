@@ -1,11 +1,11 @@
 {
-  "analysis_id": "f815bdce54ae",
+  "analysis_id": "0c24926cf466",
   "repository": {
     "id": "demo-repo",
     "name": "demo-repo",
     "head_commit": "828495fa7a1c47e004286e561c23edec4f950ca4"
   },
-  "completed_at": "2026-10-18T09:32:15.902836Z",
+  "completed_at": "2026-10-23T11:42:26.546802Z",
   "observation_start": "2024-01-01T10:00:00Z",
   "observation_end": "2024-08-26T10:00:00Z",
   "commits_analyzed": 120,
@@ -93,10 +93,10 @@
     "scored_snapshot": "2024-07-29"
   },
   "timings_seconds": {
-    "reading_history": 1.84,
+    "reading_history": 1.88,
     "computing_features": 0.0,
     "detecting_bug_fixes": 0.02,
-    "tracing_szz": 0.81,
+    "tracing_szz": 0.82,
     "building_dataset": 0.02,
     "training_model": 0.01
   },

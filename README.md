@@ -2,7 +2,19 @@
 
 Mines a local git repository's history and ranks files by risk signals: churn, recent activity, ownership concentration and change coupling.
 
-It can be used from the command line (below) or through a local web dashboard backed by a FastAPI service. See **[DEVELOPMENT.md](DEVELOPMENT.md)** for setup, startup commands, the API reference and troubleshooting.
+It can be used from the command line (below) or through a web dashboard backed by a FastAPI service.
+
+**Web app quick start** (full details, including deployment, in **[DEVELOPMENT.md](DEVELOPMENT.md)**):
+
+```bash
+pip install -r requirements.txt -r requirements-api.txt   # + requirements-ml.txt for the ML model
+cp .env.example .env                                       # REPORISK_ENV=development for local use
+python -m reporisk.api.users create you@example.com        # accounts are provisioned, no public sign-up
+python -m uvicorn reporisk.api.main:app --port 8000        # terminal 1
+cd frontend && npm install && npm run dev                  # terminal 2 → http://localhost:5173
+```
+
+The dashboard requires sign-in. Passwords are hashed with Argon2id, sessions use HttpOnly `SameSite=Strict` cookies with server-side revocation and CSRF tokens, and users analyze public GitHub repositories by URL (e.g. `https://github.com/psf/requests`); the server clones them into temporary folders that are deleted after each analysis. Pre-approved local repositories can still be listed in `REPORISK_REPOS`. Risk levels are heuristics, bug-fix labels are not verified defects, and the ML model's predictive performance is not established. The dashboard shows these limitations next to the results.
 
 ## Usage
 

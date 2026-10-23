@@ -1,5 +1,5 @@
 {
-  "id": "f815bdce54ae",
+  "id": "0c24926cf466",
   "repository_id": "demo-repo",
   "repository_name": "demo-repo",
   "status": "completed",
@@ -9,9 +9,9 @@
   "stage_count": 6,
   "message": null,
   "error": null,
-  "created_at": "2026-10-18T09:32:13.212600Z",
-  "started_at": "2026-10-18T09:32:13.212664Z",
-  "finished_at": "2026-10-18T09:32:15.903007Z",
+  "created_at": "2026-10-23T11:42:23.807179Z",
+  "started_at": "2026-10-23T11:42:23.807229Z",
+  "finished_at": "2026-10-23T11:42:26.546978Z",
   "options": {
     "exclude_tests": true,
     "source_only": true,

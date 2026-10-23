@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { api } from "../api/client.js";
-import { Badge, Card, EmptyState, ErrorState, LoadingState, Notice, inputClass } from "../components/ui.jsx";
+import { BugIcon, ChevronIcon, SearchIcon } from "../components/icons.jsx";
+import { Badge, Button, Card, EmptyState, ErrorState, LoadingState, Notice, PageHeader, inputClass } from "../components/ui.jsx";
 import { useApi } from "../hooks/useApi.js";
 import { OUTCOME_LABELS, formatDate, formatNumber, shortHash } from "../lib/format.js";
 
@@ -23,117 +24,123 @@ export default function BugFixes({ analysisId }) {
     );
   }, [data, outcome, search]);
 
-  if (loading) return <LoadingState label="Loading bug-fix candidates…" />;
-  if (error) return <ErrorState error={error} onRetry={reload} title="Could not load bug-fix candidates" />;
+  const header = (
+    <PageHeader title="Bug-fix insights"
+                description="Commits classified as bug fixes, and the earlier commits SZZ links them to." />
+  );
+  if (loading) return <>{header}<LoadingState label="Loading bug-fix candidates…" /></>;
+  if (error) return <>{header}<ErrorState error={error} onRetry={reload} title="Could not load bug-fix candidates" /></>;
 
   return (
-    <div className="space-y-6">
-      <Notice tone="warning" title="Candidates, not confirmed bugs">
-        <ul className="list-disc pl-5">{data.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
-      </Notice>
+    <>
+      {header}
+      <div className="space-y-6">
+        <Notice tone="warning" title="Candidates, not confirmed bugs">
+          <ul className="list-disc pl-5">{data.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
+        </Notice>
 
-      <Card
-        title="Bug-fix insights"
-        description={`${formatNumber(data.outcome_counts.likely_bug_fix)} likely and ${formatNumber(data.outcome_counts.uncertain)} uncertain bug-fix commits. ${
-          data.szz.status === "completed"
+        <Card
+          title={`${formatNumber(data.outcome_counts.likely_bug_fix)} likely and ${formatNumber(data.outcome_counts.uncertain)} uncertain bug-fix commits`}
+          description={data.szz.status === "completed"
             ? `SZZ found ${formatNumber(data.szz.inducing_commits)} candidate bug-inducing commits.`
-            : "SZZ tracing was skipped for this analysis."
-        }`}
-      >
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-          <div className="flex-1">
-            <label htmlFor="fix-search" className="sr-only">Search commits</label>
-            <input id="fix-search" type="search" placeholder="Search by message or hash…" className={inputClass}
-                   value={search} onChange={(e) => { setSearch(e.target.value); setShown(PAGE); }} />
+            : "SZZ tracing was skipped for this analysis."}
+        >
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+            <div className="relative flex-1">
+              <label htmlFor="fix-search" className="sr-only">Search commits</label>
+              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <input id="fix-search" type="search" placeholder="Search by message or hash…" className={`${inputClass} pl-9`}
+                     value={search} onChange={(e) => { setSearch(e.target.value); setShown(PAGE); }} />
+            </div>
+            <div className="sm:w-56">
+              <label htmlFor="outcome-filter" className="sr-only">Filter by outcome</label>
+              <select id="outcome-filter" className={inputClass} value={outcome}
+                      onChange={(e) => { setOutcome(e.target.value); setShown(PAGE); }}>
+                <option value="likely_bug_fix">Likely bug fixes</option>
+                <option value="uncertain">Uncertain</option>
+                <option value="all">All candidates</option>
+              </select>
+            </div>
           </div>
-          <div className="sm:w-56">
-            <label htmlFor="outcome-filter" className="sr-only">Filter by outcome</label>
-            <select id="outcome-filter" className={inputClass} value={outcome}
-                    onChange={(e) => { setOutcome(e.target.value); setShown(PAGE); }}>
-              <option value="likely_bug_fix">Likely bug fixes</option>
-              <option value="uncertain">Uncertain</option>
-              <option value="all">All candidates</option>
-            </select>
-          </div>
-        </div>
 
-        {items.length === 0 ? (
-          <EmptyState title="No bug-fix candidates">
-            {data.items.length === 0
-              ? "The detector found no likely or uncertain bug-fix commits in this repository."
-              : "No candidates match the current filters."}
-          </EmptyState>
-        ) : (
-          <ul className="space-y-3">
-            {items.slice(0, shown).map((b) => <Candidate key={b.hash} fix={b} />)}
-          </ul>
-        )}
-        {items.length > shown && (
-          <button type="button" onClick={() => setShown((n) => n + PAGE)}
-                  className="mt-4 text-sm font-medium text-indigo-600 hover:text-indigo-500">
-            Show more ({formatNumber(items.length - shown)} remaining)
-          </button>
-        )}
-      </Card>
-    </div>
+          {items.length === 0 ? (
+            <EmptyState icon={<BugIcon className="h-5 w-5" />} title="No bug-fix candidates">
+              {data.items.length === 0
+                ? "The detector found no likely or uncertain bug-fix commits in this repository."
+                : "No candidates match the current filters."}
+            </EmptyState>
+          ) : (
+            <ul className="space-y-2">
+              {items.slice(0, shown).map((b) => <Candidate key={b.hash} fix={b} />)}
+            </ul>
+          )}
+          {items.length > shown && (
+            <Button variant="secondary" className="mt-4" onClick={() => setShown((n) => n + PAGE)}>
+              Show more ({formatNumber(items.length - shown)} remaining)
+            </Button>
+          )}
+        </Card>
+      </div>
+    </>
   );
 }
 
 function Candidate({ fix }) {
   return (
-    <li className="rounded-lg border border-slate-200">
-      <details>
-        <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+    <li className="rounded-lg border border-line bg-raised/30 transition-colors hover:border-line-strong">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-4 py-3 [&::-webkit-details-marker]:hidden">
+          <ChevronIcon className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
           <code className="font-mono text-xs text-slate-500">{shortHash(fix.hash)}</code>
-          <span className="flex-1 font-medium text-slate-800">{fix.subject || "(empty message)"}</span>
+          <span className="min-w-0 flex-1 font-medium text-slate-100">{fix.subject || "(empty message)"}</span>
           <Badge tone={OUTCOME_TONES[fix.outcome]}>{OUTCOME_LABELS[fix.outcome]}</Badge>
           <span className="text-xs text-slate-500">{formatDate(fix.timestamp)}</span>
           <span className="text-xs tabular-nums">
-            <span className="text-emerald-700">+{fix.added}</span> <span className="text-red-700">−{fix.deleted}</span>
+            <span className="text-emerald-400">+{fix.added}</span> <span className="text-red-400">−{fix.deleted}</span>
           </span>
-          {fix.szz_records.length > 0 && <Badge tone="info">{fix.szz_records.length} SZZ candidate{fix.szz_records.length > 1 ? "s" : ""}</Badge>}
+          {fix.szz_records.length > 0 && (
+            <Badge tone="info">{fix.szz_records.length} SZZ candidate{fix.szz_records.length > 1 ? "s" : ""}</Badge>
+          )}
         </summary>
-        <div className="space-y-3 border-t border-slate-100 px-4 py-3 text-sm">
-          <div>
-            <p className="font-semibold text-slate-700">Classification evidence</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {fix.evidence.map((e) => <Badge key={e}>{e}</Badge>)}
-            </div>
-          </div>
-          <div>
-            <p className="font-semibold text-slate-700">Changed files</p>
-            <ul className="mt-1 font-mono text-xs text-slate-600">
-              {fix.files.map((f) => <li key={f.path}>{f.path} (+{f.added}/−{f.deleted})</li>)}
+        <div className="space-y-4 border-t border-line px-4 py-4 text-sm">
+          <section>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">Classification evidence</h3>
+            <div className="mt-2 flex flex-wrap gap-1.5">{fix.evidence.map((e) => <Badge key={e}>{e}</Badge>)}</div>
+          </section>
+          <section>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">Changed files</h3>
+            <ul className="mt-2 space-y-0.5 font-mono text-xs text-slate-300">
+              {fix.files.map((f) => <li key={f.path}>{f.path} <span className="text-slate-500">(+{f.added}/−{f.deleted})</span></li>)}
             </ul>
-          </div>
-          <div>
-            <p className="font-semibold text-slate-700">SZZ candidate bug-inducing commits</p>
-            {fix.szz_note && <p className="mt-1 text-slate-500">{fix.szz_note}</p>}
+          </section>
+          <section>
+            <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">SZZ candidate bug-inducing commits</h3>
+            {fix.szz_note && <p className="mt-2 text-slate-400">{fix.szz_note}</p>}
             {fix.szz_records.length === 0 ? (
-              !fix.szz_note && <p className="mt-1 text-slate-500">None found.</p>
+              !fix.szz_note && <p className="mt-2 text-slate-400">None found.</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {fix.szz_records.map((r) => (
-                  <li key={`${r.inducing_hash}-${r.path}`} className="rounded-md bg-slate-50 px-3 py-2">
-                    <p>
-                      <code className="font-mono text-xs">{shortHash(r.inducing_hash)}</code>{" "}
-                      <span className="text-slate-500">{formatDate(r.inducing_date)}</span>{" "}
-                      <span className="font-mono text-xs">{r.path}</span>
+                  <li key={`${r.inducing_hash}-${r.path}`} className="rounded-lg border border-line bg-canvas/60 p-3">
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <code className="font-mono text-xs text-indigo-300">{shortHash(r.inducing_hash)}</code>
+                      <span className="text-xs text-slate-500">{formatDate(r.inducing_date)}</span>
+                      <span className="font-mono text-xs text-slate-300">{r.path}</span>
                     </p>
-                    <pre className="mt-1 overflow-x-auto rounded bg-white p-2 font-mono text-xs text-slate-700 ring-1 ring-slate-200">
+                    <pre className="mt-2 overflow-x-auto rounded-md border border-line bg-black/30 p-2.5 font-mono text-xs leading-relaxed text-slate-300">
                       {r.lines.map((l) => `${String(l.fix_parent_line).padStart(5)}  ${l.content}`).join("\n")}
                     </pre>
-                    <p className="mt-1 text-xs text-slate-600">{r.evidence.join(" · ")}</p>
-                    <p className="mt-1 text-xs text-amber-800">Limitations: {r.limitations.join("; ")}</p>
+                    <p className="mt-2 text-xs text-slate-400">{r.evidence.join(" · ")}</p>
+                    <p className="mt-1 text-xs text-amber-200/80">Limitations: {r.limitations.join("; ")}</p>
                   </li>
                 ))}
               </ul>
             )}
-          </div>
+          </section>
           {fix.message.trim() !== fix.subject && (
-            <details className="text-xs text-slate-500">
-              <summary className="cursor-pointer">Full commit message</summary>
-              <pre className="mt-1 whitespace-pre-wrap font-mono">{fix.message}</pre>
+            <details className="text-xs text-slate-400">
+              <summary className="cursor-pointer text-slate-300">Full commit message</summary>
+              <pre className="mt-2 whitespace-pre-wrap font-mono">{fix.message}</pre>
             </details>
           )}
         </div>

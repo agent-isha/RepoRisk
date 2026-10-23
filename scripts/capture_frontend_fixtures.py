@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from reporisk.api.app import create_app  # noqa: E402
 from reporisk.api.config import Settings, build_repositories  # noqa: E402
 from tests import synthetic_repo  # noqa: E402
+from tests.auth_helpers import sign_in  # noqa: E402
 
 OUT = ROOT / "frontend" / "src" / "test" / "fixtures"
 OPTIONS = {"horizon_days": 30, "snapshot_interval_days": 30}
@@ -30,9 +31,11 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         repo = synthetic_repo.build(str(Path(tmp) / "demo-repo"))
-        settings = Settings(repositories=build_repositories([repo]), data_dir=Path(tmp) / "data")
+        settings = Settings(repositories=build_repositories([repo]), data_dir=Path(tmp) / "data",
+                            db_path=Path(tmp) / "auth.sqlite3")
         app = create_app(settings)
         client = TestClient(app)
+        sign_in(client, app)  # a throwaway account in the temporary database
 
         def run(options):
             job = client.post("/api/analyze", json={"repository_id": "demo-repo", "options": options}).json()
@@ -42,6 +45,7 @@ def main() -> None:
         full = run(OPTIONS)
         no_model = run({**OPTIONS, "train_model": False})
         responses = {
+            "session.json": client.get("/api/auth/me"),
             "health.json": client.get("/health"),
             "repositories.json": client.get("/api/repositories"),
             "analysis-status.json": client.get(f"/api/analysis/{full}"),
@@ -53,7 +57,10 @@ def main() -> None:
         }
         for name, response in responses.items():
             response.raise_for_status()
-            text = json.dumps(response.json(), indent=2)
+            body = response.json()
+            if name == "session.json":  # don't commit anything token-shaped, even from a throwaway DB
+                body["csrf_token"] = "test-csrf-token"
+            text = json.dumps(body, indent=2)
             for local in {repo, str(Path(repo).resolve())}:  # macOS: /var -> /private/var
                 text = text.replace(local, "/path/to/demo-repo")
             (OUT / name).write_text(text + "\n")

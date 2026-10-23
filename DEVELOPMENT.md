@@ -5,8 +5,8 @@ RepoRisk has three parts:
 | Part | Where | What it does |
 |---|---|---|
 | Engine + CLI | `reporisk/` | Git mining, filtering, bug-fix detection, SZZ, dataset, model (`python -m reporisk …`, `python -m reporisk.model …`) |
-| API | `reporisk/api/` | FastAPI app that runs the engine as background jobs |
-| Dashboard | `frontend/` | React + Vite + Tailwind single-page app that calls the API |
+| API | `reporisk/api/` | FastAPI app: login/sessions, plus background analysis jobs |
+| Dashboard | `frontend/` | React + Vite + Tailwind single-page app (dark theme) |
 
 ## Requirements
 
@@ -22,21 +22,59 @@ From the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt       # engine, CLI and tests
-pip install -r requirements-api.txt   # FastAPI, uvicorn, httpx (API and its tests)
+pip install -r requirements-api.txt   # FastAPI, uvicorn, argon2-cffi, httpx
 pip install -r requirements-ml.txt    # optional: scikit-learn for the logistic regression
 cd frontend && npm install && cd ..
+
+cp .env.example .env                  # then edit REPORISK_REPOS (and anything else)
 ```
 
-Without `requirements-ml.txt`, everything still works. The ML predictions view then says the model is unavailable, and the churn baseline is still evaluated.
+### Create an account
+
+There is **no public sign-up and no default account**. RepoRisk reads repositories on the server's filesystem, so accounts are provisioned by whoever runs it:
+
+```bash
+python -m reporisk.api.users create you@example.com    # prompts for the password twice
+```
+
+| Command | What it does |
+|---|---|
+| `python -m reporisk.api.users list` | Show accounts and their last login |
+| `python -m reporisk.api.users set-password EMAIL` | Change a password (signs that user out everywhere) |
+| `python -m reporisk.api.users deactivate EMAIL` | Block sign-in and end that user's sessions |
+| `python -m reporisk.api.users activate EMAIL` | Re-enable an account |
+| `python -m reporisk.api.users delete EMAIL` | Remove an account |
+
+**Password rules:** at least 12 characters, at most 256, and not the same as the email address.
+
+The command reads the password from a hidden prompt. For scripts, add `--password-stdin` and pipe the password in. Passwords are never accepted as command-line arguments, because those end up in shell history.
+
+Accounts and sessions live in the SQLite file `REPORISK_DB_PATH`, which defaults to `instance/reporisk.sqlite3` and is git-ignored.
+
+### Demo account (local development only)
+
+In development (`npm run dev`), the sign-in page shows a **Demo Credentials** box with `demo@reporisk.local` / `RepoRiskDemo2026!`. The box only displays the credentials; the account must exist on the server. Create it once with the normal account command:
+
+```bash
+printf '%s\n' 'RepoRiskDemo2026!' | python -m reporisk.api.users create demo@reporisk.local --password-stdin
+```
+
+Run that again on a fresh database (it reports "already exists" if the account is there). To restore the demo password, use `set-password` instead of `create`, with the same input. To remove the account: `python -m reporisk.api.users delete demo@reporisk.local`.
+
+- **Production builds hide the box.** `npm run build` doesn't include it (the credentials aren't even in the bundle) unless you deliberately build with `VITE_SHOW_DEMO_CREDENTIALS=true`, for example for a public demo.
+- **Never create this account on a real deployment.** Its password is published on the page and in this file.
 
 ## Run the app locally
 
-**Terminal 1, API.** `REPORISK_REPOS` lists the only repositories the app may analyze, separated by `:` (use `;` on Windows):
+**Terminal 1, API.** Run it from the repository root, so it finds `.env`:
 
 ```bash
 source .venv/bin/activate
-REPORISK_REPOS="$HOME/test-repos/requests" python -m uvicorn reporisk.api.app:app --host 127.0.0.1 --port 8000
+python -m uvicorn reporisk.api.main:app --host 127.0.0.1 --port 8000
+# equivalent: python -m uvicorn reporisk.api.app:create_app --factory --host 127.0.0.1 --port 8000
 ```
+
+The first log lines summarize the mode (development/production), whether `/docs` is on, cookie security, repositories and accounts, with warnings for anything that blocks sign-in or analysis.
 
 **Terminal 2, dashboard:**
 
@@ -45,103 +83,165 @@ cd frontend
 npm run dev
 ```
 
-Open <http://localhost:5173>. Pick a repository, optionally adjust the analysis options, and press **Start analysis**. Progress updates every 1.5 s; the results tabs appear when the job completes.
+Open <http://localhost:5173> and sign in. Vite proxies `/api` and `/health` to the API, so the browser only ever talks to `localhost:5173`, and the session cookie is first-party.
 
-Interactive API docs (OpenAPI) are at <http://127.0.0.1:8000/docs>.
+Interactive API docs are at <http://127.0.0.1:8000/docs>, in development only.
 
-### Configuration
+> **Upgrading from 0.1:** the API entry point moved from `reporisk.api.app:app` to `reporisk.api.main:app`, and the API now needs a `.env` (or environment variables) and an account. Restart both terminals after pulling.
 
-| Variable | Used by | Default | Meaning |
-|---|---|---|---|
-| `REPORISK_REPOS` | API | *(none)* | Permitted local git repositories. Clients refer to them by id (the folder name), never by path |
-| `REPORISK_DATA_DIR` | API | `output/api` | Where each analysis writes its dataset CSV and model metrics (git-ignored) |
-| `REPORISK_CORS_ORIGINS` | API | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call the API |
-| `VITE_API_BASE_URL` | dashboard | `http://127.0.0.1:8000` | API base URL. Copy `frontend/.env.example` to `frontend/.env.local` to change it |
+## Configuration
+
+**Backend (`.env` or the environment).** Real environment variables win over `.env`; see `.env.example`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `REPORISK_ENV` | `production` | `development` allows plain-HTTP cookies and `/docs`. `production` forces `Secure` cookies, disables `/docs`, and refuses to start with insecure settings |
+| `REPORISK_COOKIE_SECURE` | `true` | Only `false` in `development` is honoured (for `http://localhost`) |
+| `REPORISK_REPOS` | *(none)* | Optional pre-approved local repositories, separated by `:` (`;` on Windows). Clients refer to them by id, never by path |
+| `REPORISK_CLONE_DIR` | system temp dir | Where public GitHub repositories are cloned; each analysis gets its own folder, deleted when it ends |
+| `REPORISK_CLONE_TIMEOUT` | `180` | Seconds allowed for a clone |
+| `REPORISK_MAX_REPO_MB` | `500` | Largest clone accepted |
+| `REPORISK_MAX_COMMITS` | `20000` | Most commits accepted (bounds analysis time) |
+| `REPORISK_MAX_QUEUED` | `3` | Analyses queued or running at once; more get `429` |
+| `REPORISK_DB_PATH` | `instance/reporisk.sqlite3` | Accounts and sessions (SQLite) |
+| `REPORISK_DATA_DIR` | `output/api` | Generated datasets and model metrics per analysis |
+| `REPORISK_SESSION_HOURS` | `12` | Session lifetime |
+| `REPORISK_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Origins allowed to make credentialed or state-changing requests |
+| `REPORISK_FRONTEND_DIST` | *(unset)* | Serve the built frontend from the API (production, same origin) |
+
+**Frontend (`frontend/.env.local`).** See `frontend/.env.example`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VITE_API_BASE_URL` | empty (same origin) | Only set this if the API is on another origin, which is not recommended (see below) |
+| `REPORISK_API_PROXY` | `http://127.0.0.1:8000` | Where the Vite dev server forwards `/api` |
+
+## Authentication design
+
+| Concern | How it's handled |
+|---|---|
+| Password storage | Argon2id via `argon2-cffi`; hashes are upgraded on login if the parameters change. Plain passwords are never stored or logged |
+| Credential check | Server-side. Unknown emails are checked against a dummy hash, so both failure paths take about the same time and return the same message (`Incorrect email or password.`) |
+| Sessions | A random 256-bit token in the cookie `reporisk_session`, set with `HttpOnly`, `SameSite=Strict`, `Path=/`, `Secure` in production, and `Max-Age` = session lifetime. The database stores only the token's SHA-256 hash |
+| Logout and revocation | Logout deletes the session row, so a copied cookie stops working immediately. Changing a password or deactivating an account deletes all of that user's sessions |
+| CSRF | Login and `/api/auth/me` return a per-session `csrf_token`. The browser keeps it **in memory only** and sends it as `X-CSRF-Token` on every `POST`; the server compares it in constant time. `SameSite=Strict` and an `Origin` check (foreign origins get `403`) back it up |
+| Brute force | After 5 failed logins for an email within 15 minutes, further attempts get `429` with `Retry-After` |
+| Authorization | Every `/api/*` route except `POST /api/auth/login` requires a session. The repository allowlist and id-only selection are unchanged; no path ever crosses the API |
+| Headers | `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, and a `Content-Security-Policy` (`default-src 'self'`, `frame-ancestors 'none'`). `/api/*` responses are `Cache-Control: no-store` |
+| Browser storage | Nothing sensitive is stored: no token or password in `localStorage` or `sessionStorage`, and the session cookie is unreadable by JavaScript |
+
+## Deploying
+
+The supported shape is **one origin over HTTPS**: FastAPI serves both the API and the built frontend, behind a TLS-terminating reverse proxy such as Caddy or nginx.
+
+```bash
+cd frontend && npm ci && npm run build && cd ..
+# environment (or .env) on the server:
+#   REPORISK_ENV=production
+#   REPORISK_REPOS=/srv/repos/project-a:/srv/repos/project-b
+#   REPORISK_DB_PATH=/var/lib/reporisk/reporisk.sqlite3
+#   REPORISK_DATA_DIR=/var/lib/reporisk/output
+#   REPORISK_FRONTEND_DIST=/srv/reporisk/frontend/dist
+#   REPORISK_CORS_ORIGINS=https://reporisk.example.com
+python -m reporisk.api.users --db /var/lib/reporisk/reporisk.sqlite3 create you@example.com
+python -m uvicorn reporisk.api.main:app --host 127.0.0.1 --port 8000 --proxy-headers --workers 1
+```
+
+- **Production settings:** cookies are always `Secure`, so the site **must** be served over HTTPS; the API refuses to start with `REPORISK_COOKIE_SECURE=false` in production. `/docs` is disabled.
+- **One worker.** Analysis jobs and the login throttle are kept in process memory, so use a single worker.
+- **The account database:** keep `REPORISK_DB_PATH` on persistent storage outside the web root, and back it up.
+- **Split origins aren't supported.** `SameSite=Strict` cookies aren't sent cross-site, so serve the frontend and API from the same site.
+
+## Analyzing a public GitHub repository
+
+On **Run analysis**, enter a URL such as `https://github.com/psf/requests` and press **Start analysis**. The flow:
+
+1. **The URL is checked twice,** by the dashboard and by the API (`reporisk/api/github.py`). Only `https://github.com/<owner>/<repo>` is accepted, with an optional trailing `/` or `.git`. Everything else is rejected with `422`:
+   - other hosts, `http`, `ssh` and `file`;
+   - local paths and IP addresses;
+   - credentials, ports, and `/tree/...` or `?query` URLs.
+2. **The API queues a job and returns at once.** The worker clones into a fresh temporary folder (`REPORISK_CLONE_DIR`). It clones from a URL **rebuilt from the validated owner/name**, so the user's text is never passed to git. The clone settings:
+   - `git` is run with an argument list (no shell) and a timeout;
+   - credential prompts and stored credentials are disabled, so only public repositories work and this machine's GitHub access is never used;
+   - https only, with no redirects;
+   - `--no-checkout`, because only history is read, so no repository files are written and nothing from the repository is executed.
+3. **Size and commit-count limits are checked,** then the **unchanged** analysis pipeline runs on the clone.
+4. **The clone is deleted when the job ends,** whether it succeeds or fails. Results appear in the normal dashboard pages.
+
+Errors are shown as follows:
+- **Invalid URLs** appear on the form.
+- **Clone problems** ("not found or not public", timeout, too large, too many commits) appear as "Could not clone …".
+- **Later failures** appear as "Analysis of … failed".
+
+Messages never include server paths.
 
 ## How a request flows
 
 ```
-Browser (React)                    FastAPI                           Engine (existing modules)
-───────────────                    ───────                           ─────────────────────────
-GET /api/repositories  ─────────►  permitted repos from env
-POST /api/analyze {repository_id}► validate id → JobManager.submit ─► worker thread: run_analysis()
-   ◄── 202 {id, status: queued}                                        read_commits (once)
-GET /api/analysis/{id} (poll) ──►  job status, stage i of 6            compute_stats, rank_files, alive_files
-                                                                       detect_bug_fixes → risk.assess
-                                                                       trace_fix (SZZ) per likely fix
-                                                                       build_dataset → write_dataset
-                                                                       run_pipeline (evaluation)
-                                                                       fit_and_score (latest snapshot)
-GET …/summary | files | predictions | bug-fixes ──► results kept in memory for the job
+Browser (React)                          FastAPI                                Engine
+───────────────                          ───────                                ──────
+GET /api/auth/me ─────────────────────►  session cookie → user + csrf_token
+  401 → login page
+POST /api/auth/login {email,password} ►  Argon2id verify → new session
+  ◄── Set-Cookie: reporisk_session (HttpOnly) + {user, csrf_token}
+GET /api/repositories ────────────────►  requires session
+POST /api/analyze  X-CSRF-Token ──────►  session + CSRF + allowlist ─────────► background job: run_analysis()
+GET /api/analysis/{id} (poll) ────────►  job status, stage i of 6                read_commits, features, risk,
+GET …/summary | files | predictions | bug-fixes ──► results in memory          bug fixes, SZZ, dataset, model
+POST /api/auth/logout  X-CSRF-Token ──►  delete session, clear cookie
 ```
-
-- **Analyses are background jobs** on a single worker thread, so requests return immediately. Results live in memory and are lost when the API restarts.
-- **No path ever crosses the API.** `POST /api/analyze` accepts only a configured repository id.
-- **Generated files go to `REPORISK_DATA_DIR/<analysis id>/`.** Writing inside the analyzed repository is refused.
 
 ## API endpoints
 
-| Method and path | Purpose |
-|---|---|
-| `GET /health` | Status, API version, whether scikit-learn is installed |
-| `GET /api/repositories` | Permitted repositories and whether each is usable |
-| `POST /api/analyze` | Start an analysis → `202` with the job status |
-| `GET /api/analyses` | All jobs, newest first |
-| `GET /api/analysis/{id}` | Job status: `queued`, `running`, `completed` or `failed`, with the current stage |
-| `GET /api/analysis/{id}/summary` | Counts, risk definitions, bug-fix/SZZ/dataset/model status |
-| `GET /api/analysis/{id}/files` | Ranked files with risk factors. Query: `search`, `risk_level`, `sort`, `order`, `limit`, `offset` |
-| `GET /api/analysis/{id}/predictions` | ML probabilities (only if a model was trained), evaluation, limitations |
-| `GET /api/analysis/{id}/bug-fixes` | Likely/uncertain bug-fix commits with evidence and SZZ records. Query: `outcome`, `search`, `limit`, `offset` |
+| Method and path | Auth | Purpose |
+|---|---|---|
+| `POST /api/auth/login` | public | `{email, password}` → session cookie + `{user, csrf_token, expires_at}` |
+| `POST /api/auth/logout` | session + CSRF | End the session |
+| `GET /api/auth/me` | session | Current user and CSRF token |
+| `GET /health` | public | Status, API version, whether scikit-learn is installed |
+| `GET /api/repositories` | session | Permitted repositories |
+| `POST /api/analyze` | session + CSRF | Start an analysis of `{"github_url": "https://github.com/owner/repo"}` or a configured `{"repository_id": …}` → `202` with the job status (`429` if the queue is full) |
+| `GET /api/analyses` | session | All jobs, newest first |
+| `GET /api/analysis/{id}` | session | Job status and current stage |
+| `GET /api/analysis/{id}/summary` | session | Counts, definitions, bug-fix/SZZ/dataset/model status |
+| `GET /api/analysis/{id}/files` | session | Ranked files. Query: `search`, `risk_level`, `sort`, `order`, `limit`, `offset` |
+| `GET /api/analysis/{id}/predictions` | session | ML probabilities (only if a model was trained), evaluation, limitations |
+| `GET /api/analysis/{id}/bug-fixes` | session | Bug-fix commits with evidence and SZZ records |
 
 **Errors** always have the shape `{"error": {"code", "message", "details"}}`:
 
 | Status | Codes |
 |---|---|
+| 401 | `not_authenticated`, `invalid_credentials` |
+| 403 | `csrf_failed`, `origin_not_allowed` |
 | 404 | `analysis_not_found`, `repository_not_permitted`, `not_found` |
 | 409 | `analysis_not_ready`, `analysis_failed`, `repository_unavailable` |
-| 422 | `validation_error`, with per-field details |
+| 422 | `validation_error` |
+| 429 | `too_many_attempts` |
 
-Examples:
+Example with curl (development). The cookie jar holds the session, and `jq` pulls out the CSRF token:
 
 ```bash
-curl -s http://127.0.0.1:8000/health
-curl -s http://127.0.0.1:8000/api/repositories
-curl -s -X POST http://127.0.0.1:8000/api/analyze -H 'Content-Type: application/json' \
-     -d '{"repository_id": "requests", "options": {"horizon_days": 60, "snapshot_interval_days": 30}}'
-curl -s http://127.0.0.1:8000/api/analysis/<id>
-curl -s 'http://127.0.0.1:8000/api/analysis/<id>/files?sort=churn&limit=10'
-curl -s 'http://127.0.0.1:8000/api/analysis/<id>/bug-fixes?outcome=likely_bug_fix&limit=5'
+curl -s -c jar.txt -X POST http://127.0.0.1:8000/api/auth/login -H 'Content-Type: application/json' \
+     -d '{"email": "you@example.com", "password": "…"}' | tee login.json
+CSRF=$(jq -r .csrf_token login.json)
+curl -s -b jar.txt http://127.0.0.1:8000/api/repositories
+curl -s -b jar.txt -X POST http://127.0.0.1:8000/api/analyze -H 'Content-Type: application/json' \
+     -H "X-CSRF-Token: $CSRF" -d '{"repository_id": "requests", "options": {"horizon_days": 60, "snapshot_interval_days": 30}}'
+rm jar.txt login.json
 ```
 
-Analysis options and their defaults:
+## The dashboard
 
-| Option | Default | Meaning |
-|---|---|---|
-| `exclude_tests` | `true` | Leave test files out |
-| `source_only` | `true` | Only source-code files |
-| `run_szz` | `true` | Trace candidate bug-inducing commits |
-| `train_model` | `true` | Build the dataset and train/evaluate the model |
-| `horizon_days` | `90` | Future window for the label (7–730) |
-| `snapshot_interval_days` | `90` | Days between dataset snapshots (7–365) |
-
-## What the dashboard shows
-
-**Overview:**
-- files analyzed;
-- high, medium and low counts (definitions below);
-- bug-fix and SZZ totals;
-- ML model status, warnings, and recent analyses.
-
-**File risk explorer:** a searchable, sortable table of churn, commits, 90-day churn, authors, coupling and bug-fix commits. Each file has factor chips, and clicking a path explains its risk. This view shows heuristics only; ML probabilities are on their own tab.
-
-**ML predictions:**
-- probabilities, but only when a model was actually trained;
-- the chronological evaluation, comparing the churn baseline with logistic regression, with "undefined" shown for metrics that can't be computed;
-- warnings, limitations, and the label disclaimer.
-
-When no model is available, the tab shows an empty state with the reason.
-
-**Bug-fix insights:** likely and uncertain bug-fix commits with their classification evidence, changed files, SZZ candidate commits with the blamed lines, and per-record limitations.
+- **Login:** a split-screen page with email and password, show/hide password, inline validation, a loading state, and clear messages for wrong credentials, throttling and an unreachable API.
+- **Layout:** a sidebar (a drawer on mobile) holds the navigation, API/ML status, the signed-in user and sign-out. Routes are hash-based (`#/files`), so deep links and the back button work. The header shows the current analysis and its live progress on every page.
+- **Pages:**
+  - **Overview:** file counts by risk level, the risk chart, analysis details, bug-fix and SZZ totals, and the risk definitions.
+  - **File risk explorer:** a searchable, sortable table. Selecting a file opens an accessible dialog explaining its risk.
+  - **ML predictions:** probabilities only when a model was trained, the chronological evaluation, the label disclaimer and limitations.
+  - **Bug-fix insights:** evidence, changed files, SZZ candidate commits with blamed lines, and per-record limitations.
+  - **Run analysis:** the repository picker, options, progress and recent analyses.
+- **Session handling:** if the session expires or is revoked, the next request returns you to the login page with a message.
 
 ### Heuristic risk levels
 
@@ -156,25 +256,18 @@ Defined in `reporisk/risk.py`. A file gets one factor per rule it meets:
 | Concentrated ownership | ≥ 10 commits and author HHI ≥ 0.75 |
 | Strong coupling | ≥ 5 commits and ≥ 50% of them also change one partner file |
 
-The level is then **high** for 3 or more factors, **medium** for 1–2, and **low** for none.
-
-Percentile rules are relative to the files in the same analysis. These are review indicators, not predictions.
+The level is then **high** for 3 or more factors, **medium** for 1–2, and **low** for none. These are review indicators, not predictions.
 
 ## Tests
 
 ```bash
-# all Python tests (engine, model, API, frontend-fixture contract)
-source .venv/bin/activate && python -m pytest
-
-# the same suite with unittest (the API tests skip if requirements-api.txt isn't installed)
-python -m unittest discover -s tests -t .
-
-# frontend tests (Vitest + Testing Library, jsdom)
-cd frontend && npm test
+source .venv/bin/activate && python -m pytest       # all Python tests (engine, model, API, auth)
+python -m unittest discover -s tests -t .           # same suite with unittest
+cd frontend && npm test && npm run build            # frontend tests + production build
 ```
 
-- **API tests** (`tests/test_api.py`) run real analyses on a synthetic git repository built by `tests/synthetic_repo.py`.
-- **Frontend fixtures** are real API responses captured from that same repository. After changing an API response, regenerate them; the Python contract test fails if a fixture no longer matches the schemas:
+- **API and auth tests** (`tests/test_api.py`, `tests/test_auth.py`) use temporary databases and real temporary git repositories. The test account lives in `tests/auth_helpers.py` and is only used inside those temporary databases.
+- **Frontend fixtures** are real API responses captured from the synthetic repository. After changing an API response, regenerate them:
 
 ```bash
 python scripts/capture_frontend_fixtures.py
@@ -184,17 +277,36 @@ python scripts/capture_frontend_fixtures.py
 
 | Symptom | Fix |
 |---|---|
-| Dashboard says "Cannot reach the RepoRisk API" | Start the API (Terminal 1). Check `VITE_API_BASE_URL` matches its host/port |
-| Browser console shows a CORS error | Open the dashboard at an origin listed in `REPORISK_CORS_ORIGINS` (default: `localhost:5173` or `127.0.0.1:5173`) |
-| "No repositories configured" | Set `REPORISK_REPOS` before starting uvicorn; restart the API after changing it |
-| A repository shows "not a git repository" / "directory does not exist" | Use the absolute path of a folder that contains `.git` |
-| ML predictions say "scikit-learn is not installed" | `pip install -r requirements-ml.txt` in the API's venv, then restart the API |
-| ML predictions say "model could not be trained" | Not enough history for two complete snapshots, or only one label class. Lower the snapshot interval/horizon, or analyze a longer-lived repository |
-| `pip install` fails with `nodename nor servname provided` | DNS/network problem reaching PyPI. Check the connection or proxy and retry; nothing in the repo needs to change |
-| Recent analyses disappeared | Results are kept in memory; restarting the API clears them |
-| Analysis of a large repo is slow | Reading history with PyDriller dominates (about 75 s for `psf/requests`). Disable SZZ or model training in the options to save the remaining time |
-| `npm install` warns that `esbuild` install scripts were not approved | Safe to ignore: esbuild's platform binary ships as a separate package. If Vite fails to start, run `npm approve-scripts esbuild` |
+| `/docs` or `/openapi.json` returns 404 `docs_disabled` | `REPORISK_ENV` is unset, so the API runs in production mode, where docs are off. Locally, run from the repo root with a `.env` copied from `.env.example` (`REPORISK_ENV=development`). The uvicorn startup log prints the mode |
+| Startup log warns "no accounts exist" | Create one: `python -m reporisk.api.users create you@example.com` (same `REPORISK_DB_PATH` as the server) |
+| API on a port other than 8000 | Start Vite with `REPORISK_API_PROXY=http://127.0.0.1:PORT npm run dev`, or set it in `frontend/.env.local`. No other change is needed: the browser stays same-origin through the proxy |
+| "Cannot reach RepoRisk" | Start the API (Terminal 1) with `reporisk.api.main:app`; keep `npm run dev` running; check `REPORISK_API_PROXY` |
+| Login says "Requests from this origin are not allowed" | The page's origin isn't the API's own origin or in `REPORISK_CORS_ORIGINS`. Use the Vite dev server (it keeps the Host header) or add the origin |
+| Login succeeds but the next request says "Sign in to continue" | The cookie wasn't stored: over plain HTTP you need `REPORISK_ENV=development` and `REPORISK_COOKIE_SECURE=false`; in production, serve over HTTPS |
+| `ConfigError: production requires Secure session cookies` | You set `REPORISK_COOKIE_SECURE=false` with `REPORISK_ENV=production`. Use HTTPS, or `development` locally |
+| "Too many failed sign-in attempts" | Wait for the lockout (15 minutes), or restart the API; the throttle is in memory |
+| Forgot a password | `python -m reporisk.api.users set-password you@example.com` |
+| "No repositories configured" | Set `REPORISK_REPOS` in `.env`, then restart the API |
+| ML predictions say "scikit-learn is not installed" | `pip install -r requirements-ml.txt`, then restart the API |
+| `pip install` fails with `nodename nor servname provided` | DNS/network problem reaching PyPI. Check the connection and retry |
+| Recent analyses disappeared | Results live in memory; restarting the API clears them |
 
 ## What is not committed
 
-`.venv/`, `frontend/node_modules/`, `frontend/dist/`, `output/` (all datasets, metrics, predictions and API job data), `*.csv`, `*.jsonl`, `*.meta.json`, `metrics.json`, model files and `.env*` files are git-ignored. The frontend test fixtures under `frontend/src/test/fixtures/` **are** committed. They are small, synthetic and contain no local paths.
+These are all git-ignored:
+- `.venv/`, `frontend/node_modules/`, `frontend/dist/`;
+- `.env` and `.env.*` (the `.env.example` files are kept);
+- `instance/` and `*.sqlite3` (accounts and sessions);
+- `output/` (datasets, metrics, predictions, API job data);
+- `*.csv`, `*.jsonl`, `*.meta.json`, `metrics.json`, `*.pkl`, `*.joblib`.
+
+The frontend test fixtures under `frontend/src/test/fixtures/` **are** committed. They are synthetic, contain no local paths, and their CSRF token is the placeholder `test-csrf-token`.
+
+## Known limitations
+
+- **No self-service account features.** There's no sign-up, password reset email, MFA or roles; everyone signed in sees the same repositories and analyses.
+- **Process-local state.** The login throttle is per email (not per IP) and in memory. A determined attacker can temporarily lock out a known email, and the counters reset when the API restarts.
+- **Results don't survive a restart.** Analysis results are in memory and shared by all users, and only one analysis runs at a time.
+- **SQLite suits a small team on one server,** not a multi-instance deployment.
+- **Renamed files lose history.** It is split at renames, so files moved into `src/` look newer than they are, which understates their risk.
+- **ML performance is not established** on the evaluated repository, and labels are heuristic bug-fix classifications, not verified defects.

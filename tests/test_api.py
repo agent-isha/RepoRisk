@@ -24,6 +24,7 @@ except ImportError:  # pragma: no cover
 
 from reporisk import model
 from tests import synthetic_repo
+from tests.auth_helpers import sign_in
 
 HAS_GIT = shutil.which("git") is not None
 FIXTURES = Path(__file__).resolve().parents[1] / "frontend" / "src" / "test" / "fixtures"
@@ -42,11 +43,16 @@ class ApiTestCase(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def client(self, paths=None):
+    def client(self, paths=None, signed_in=True):
+        """A TestClient for a fresh app; signed in (with the CSRF header set) by default."""
         paths = [str(self.repo_path), str(self.not_git), str(self.tmp / "missing")] if paths is None else paths
-        settings = Settings(repositories=build_repositories(paths), data_dir=self.tmp / "data")
+        settings = Settings(repositories=build_repositories(paths), data_dir=self.tmp / "data",
+                            db_path=self.tmp / "auth.sqlite3")
         self.app = create_app(settings)
-        return TestClient(self.app)
+        client = TestClient(self.app)
+        if signed_in:
+            sign_in(client, self.app)
+        return client
 
     def run_analysis(self, client, options=None, repo_id="demo-repo"):
         response = client.post("/api/analyze", json={"repository_id": repo_id, "options": options or FAST})
@@ -278,6 +284,7 @@ class FrontendFixtureContractTests(unittest.TestCase):
         "predictions.json": "PredictionsResponse",
         "predictions-unavailable.json": "PredictionsResponse",
         "bug-fixes.json": "BugFixesPage",
+        "session.json": "SessionInfo",
     }
 
     def test_fixtures_match_schemas(self):

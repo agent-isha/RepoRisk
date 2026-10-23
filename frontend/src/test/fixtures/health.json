@@ -1,6 +1,6 @@
 {
   "status": "ok",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "ml_available": true,
   "scikit_learn_version": "1.6.1",
   "repositories_configured": 1

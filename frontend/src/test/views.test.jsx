@@ -50,9 +50,16 @@ describe("FileExplorer", () => {
     mockFetch({ [filesUrl]: json(fixtures.files) });
     render(<FileExplorer analysisId={analysisId} />);
     const flagged = fixtures.files.items.find((f) => f.risk_factors.length > 0);
-    await userEvent.click(await screen.findByRole("button", { name: flagged.path }));
-    expect(screen.getByText(`Why this file is ${flagged.risk_level} risk`)).toBeInTheDocument();
-    expect(screen.getByText(flagged.risk_factors[0].detail, { exact: false })).toBeInTheDocument();
+    const trigger = await screen.findByRole("button", { name: flagged.path });
+    await userEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: flagged.path });
+    expect(within(dialog).getByText(`Why this file is ${flagged.risk_level} risk`)).toBeInTheDocument();
+    expect(within(dialog).getByText(flagged.risk_factors[0].detail)).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Close dialog" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("shows an empty state when the analysis has no files", async () => {

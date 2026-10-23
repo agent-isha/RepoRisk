@@ -7,7 +7,9 @@ runtime and Python 3.9 doesn't support `X | None`.
 from datetime import date, datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from .github import InvalidGitHubURL, parse_github_url
 
 AnalysisState = Literal["queued", "running", "completed", "failed"]
 RiskLevel = Literal["high", "medium", "low"]
@@ -22,6 +24,29 @@ class ErrorBody(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorBody
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(..., min_length=3, max_length=254)
+    password: str = Field(..., min_length=1, max_length=256)
+
+
+class UserOut(BaseModel):
+    email: str
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+
+
+class SessionInfo(BaseModel):
+    user: UserOut
+    csrf_token: str = Field(..., description="send back in the X-CSRF-Token header on POST requests")
+    expires_at: datetime
+
+
+class LogoutResponse(BaseModel):
+    status: Literal["logged_out"]
 
 
 class Health(BaseModel):
@@ -52,10 +77,29 @@ class AnalysisOptions(BaseModel):
 
 
 class AnalyzeRequest(BaseModel):
+    """Analyze either a pre-approved repository (by id) or a public GitHub URL."""
+
     model_config = ConfigDict(extra="forbid")
 
-    repository_id: str = Field(..., min_length=1, max_length=100)
+    repository_id: Optional[str] = Field(None, min_length=1, max_length=100)
+    github_url: Optional[str] = Field(None, max_length=300, description="https://github.com/owner/repo")
     options: AnalysisOptions = Field(default_factory=AnalysisOptions)
+
+    @field_validator("github_url")
+    @classmethod
+    def _valid_github_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return parse_github_url(value).web_url  # normalized
+        except InvalidGitHubURL as exc:
+            raise ValueError(str(exc))
+
+    @model_validator(mode="after")
+    def _exactly_one_source(self):
+        if (self.repository_id is None) == (self.github_url is None):
+            raise ValueError("Provide either github_url or repository_id.")
+        return self
 
 
 class AnalysisStatus(BaseModel):
