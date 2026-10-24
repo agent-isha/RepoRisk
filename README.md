@@ -3,6 +3,10 @@
 Mines a local git repository's history and ranks files by risk signals: churn, recent activity, ownership concentration and change coupling.
 
 It can be used from the command line (below) or through a web dashboard backed by a FastAPI service.
+<h1 align="center">
+  🚀 <a href="https://repo-risk.vercel.app">TRY THE APPLICATION HERE</a> 🚀
+</h1>
+<p align="center">Analyze GitHub repositories and identify potentially risky commits.</p>
 
 **Web app quick start** (full details, including deployment, in **[DEVELOPMENT.md](DEVELOPMENT.md)**):
 
