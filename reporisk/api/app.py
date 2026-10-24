@@ -24,8 +24,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..model import LogisticRegression, sklearn
 from . import schemas
-from .auth import CSRF_HEADER, SESSION_COOKIE, AuthStore, LoginThrottle, Session, csrf_matches
-from .config import Settings, settings_from_env
+from .auth import CSRF_HEADER, SESSION_COOKIE, AuthError, AuthStore, LoginThrottle, Session, csrf_matches
+from .config import ConfigError, Settings, settings_from_env
 from .engine import BUG_FIX_LIMITATIONS
 from .github import parse_github_url
 from .jobs import CloneLimits, Job, JobManager, QueueFull
@@ -123,11 +123,19 @@ def create_app(settings: Optional[Settings] = None) -> FastAPI:
                                  settings.max_repo_mb, settings.max_commits),
     )
     store = AuthStore(settings.db_path, settings.session_hours)
+    provisioned = None
+    if settings.admin_email:
+        try:
+            provisioned = store.ensure_user(settings.admin_email, settings.admin_password)
+        except AuthError as exc:  # e.g. the password is too short; never log the password
+            raise ConfigError(f"REPORISK_ADMIN_EMAIL/REPORISK_ADMIN_PASSWORD: {exc}")
     throttle = LoginThrottle(settings.login_max_failures, settings.login_lockout_minutes)
     allowed_origins = set(settings.cors_origins)
 
     @asynccontextmanager
     async def lifespan(_app):
+        if provisioned:
+            startup_log.info(f"Account from REPORISK_ADMIN_EMAIL ({settings.admin_email}): {provisioned}")
         for line in startup_summary(settings, store):
             if line.startswith("WARNING: "):
                 startup_log.warning(line[len("WARNING: "):])

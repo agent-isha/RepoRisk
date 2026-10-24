@@ -23,6 +23,9 @@ REPORISK_MAX_REPO_MB    Largest clone accepted, in MB (default 500).
 REPORISK_MAX_COMMITS    Most commits accepted in a cloned repository (default 20000);
                         this bounds analysis time.
 REPORISK_MAX_QUEUED     Most analyses queued or running at once (default 3).
+REPORISK_ADMIN_EMAIL    Optional: an account to create (or update) at every startup, for hosts
+REPORISK_ADMIN_PASSWORD without a shell or persistent disk. Set the password as a secret in the
+                        host's dashboard; never commit it.
 
 Values already set in the environment win over the .env file.
 """
@@ -72,6 +75,8 @@ class Settings:
     max_repo_mb: int = 500
     max_commits: int = 20000
     max_queued_analyses: int = 3
+    admin_email: str | None = None
+    admin_password: str | None = field(default=None, repr=False)
     _by_id: dict = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self):
@@ -81,6 +86,8 @@ class Settings:
             raise ConfigError("production requires Secure session cookies (serve the app over HTTPS)")
         if self.session_hours <= 0:
             raise ConfigError("REPORISK_SESSION_HOURS must be positive")
+        if bool(self.admin_email) != bool(self.admin_password):
+            raise ConfigError("set both REPORISK_ADMIN_EMAIL and REPORISK_ADMIN_PASSWORD, or neither")
         for name in ("clone_timeout_seconds", "max_repo_mb", "max_commits", "max_queued_analyses"):
             if getattr(self, name) <= 0:
                 raise ConfigError(f"{name} must be positive")
@@ -178,4 +185,6 @@ def settings_from_env(env: Mapping[str, str] | None = None) -> Settings:
         max_repo_mb=_int(env, "REPORISK_MAX_REPO_MB", 500),
         max_commits=_int(env, "REPORISK_MAX_COMMITS", 20000),
         max_queued_analyses=_int(env, "REPORISK_MAX_QUEUED", 3),
+        admin_email=(env.get("REPORISK_ADMIN_EMAIL") or "").strip() or None,
+        admin_password=env.get("REPORISK_ADMIN_PASSWORD") or None,
     )

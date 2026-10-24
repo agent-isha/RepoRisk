@@ -38,10 +38,17 @@ function AuthGate({ pollMs }) {
     return (
       <div className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-4">
         <ErrorState title="Cannot reach RepoRisk" error={auth.error} onRetry={auth.retry} />
-        <p className="mt-4 text-sm text-slate-400">
-          Start the API with <code className="font-mono text-slate-300">python -m uvicorn reporisk.api.main:app --port 8000</code>{" "}
-          (see DEVELOPMENT.md) and keep <code className="font-mono text-slate-300">npm run dev</code> running.
-        </p>
+        {import.meta.env.DEV ? (
+          <p className="mt-4 text-sm text-slate-400">
+            Start the API with <code className="font-mono text-slate-300">python -m uvicorn reporisk.api.main:app --port 8000</code>{" "}
+            (see DEVELOPMENT.md) and keep <code className="font-mono text-slate-300">npm run dev</code> running.
+          </p>
+        ) : (
+          <p className="mt-4 text-sm text-slate-400">
+            The RepoRisk server didn&rsquo;t respond. If it has been idle it may take up to a minute to start, so try
+            again shortly. If this persists, the API may not be deployed or connected to this site yet.
+          </p>
+        )}
       </div>
     );
   }

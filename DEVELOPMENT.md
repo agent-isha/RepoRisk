@@ -103,6 +103,7 @@ Interactive API docs are at <http://127.0.0.1:8000/docs>, in development only.
 | `REPORISK_MAX_REPO_MB` | `500` | Largest clone accepted |
 | `REPORISK_MAX_COMMITS` | `20000` | Most commits accepted (bounds analysis time) |
 | `REPORISK_MAX_QUEUED` | `3` | Analyses queued or running at once; more get `429` |
+| `REPORISK_ADMIN_EMAIL`, `REPORISK_ADMIN_PASSWORD` | *(unset)* | Optional account created or updated at each start (for hosts without a shell or disk). Set both or neither; keep the password a secret in the host's dashboard |
 | `REPORISK_DB_PATH` | `instance/reporisk.sqlite3` | Accounts and sessions (SQLite) |
 | `REPORISK_DATA_DIR` | `output/api` | Generated datasets and model metrics per analysis |
 | `REPORISK_SESSION_HOURS` | `12` | Session lifetime |
@@ -174,6 +175,29 @@ Errors are shown as follows:
 - **Later failures** appear as "Analysis of … failed".
 
 Messages never include server paths.
+
+### Vercel (frontend) + Render (API)
+
+This is how `https://repo-risk.vercel.app` is deployed. Vercel **proxies** `/api/*` and `/health` to Render (`frontend/vercel.json`), so the browser only ever talks to the Vercel origin. That keeps the session cookie first-party: `SameSite=Strict`, CSRF tokens and the `Origin` check all keep working. Calling Render directly from the browser would be cross-site, and the cookie would not be sent. Leave `VITE_API_BASE_URL` **unset** on Vercel.
+
+**Render (API)**
+- `render.yaml` at the repository root defines the service. In Render: **New → Blueprint →** select this repository.
+- **Build command:** `pip install -r requirements.txt -r requirements-api.txt -r requirements-ml.txt`. All three files are needed: the API imports the analysis engine and the model.
+- **Start command:** `uvicorn reporisk.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips "*"`.
+- **Health check:** `/health`.
+- **Secrets:** Render asks for `REPORISK_ADMIN_EMAIL` and `REPORISK_ADMIN_PASSWORD`. That account is created, or its password updated, at every start, because the free plan has no shell to run `python -m reporisk.api.users` and no persistent disk. Use a strong password (at least 12 characters), never commit it, and **never** put it in a `VITE_*` variable: those are compiled into the public JavaScript.
+
+**Vercel (frontend)**
+- Root directory `frontend`, framework Vite, output `dist`. `frontend/vercel.json` holds the rewrites to the Render URL; update it if the Render URL changes.
+
+**Free-tier behaviour**
+
+| Limitation | Effect |
+|---|---|
+| Idle sleep | The API sleeps after about 15 minutes without traffic. The first request then waits for a cold start (often 30–60 s, sometimes longer), and the sign-in page may show "Cannot reach RepoRisk" until it wakes; **Try again** recovers |
+| Ephemeral disk | Restarts and redeploys wipe `/tmp/reporisk`: sessions (you sign in again), analysis results and generated datasets. The provisioned account is recreated at start, so sign-in keeps working |
+| Slow CPU | Free instances get a fraction of a CPU. A full analysis of `psf/requests` (about 4,900 commits) peaked at 117 MB of memory and took 87 s on a laptop, so expect it to be several times slower on free Render. `REPORISK_MAX_COMMITS=10000` bounds it |
+| Durable sessions and data | Needs a paid instance with a persistent disk. Mount it (e.g. at `/var/data`) and set `REPORISK_DB_PATH=/var/data/reporisk.sqlite3` and `REPORISK_DATA_DIR=/var/data/output`. No schema migration is needed: the same SQLite file and tables are used |
 
 ## How a request flows
 

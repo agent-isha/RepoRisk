@@ -1,0 +1,42 @@
+# Render Blueprint for the RepoRisk API (https://render.com/docs/blueprint-spec).
+# The React frontend is deployed separately on Vercel, which proxies /api and
+# /health to this service (see frontend/vercel.json), so the browser only talks
+# to the Vercel origin and the SameSite=Strict session cookie stays first-party.
+services:
+  - type: web
+    name: reporisk-api
+    runtime: python
+    plan: free
+    # The API imports the analysis engine (PyDriller etc., requirements.txt) and the
+    # model (scikit-learn, requirements-ml.txt), so all three files are needed.
+    buildCommand: pip install -r requirements.txt -r requirements-api.txt -r requirements-ml.txt
+    # One worker: analysis jobs and the login throttle live in process memory.
+    # --proxy-headers: Render terminates HTTPS in front of uvicorn.
+    startCommand: uvicorn reporisk.api.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips "*"
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.9                # the version the full test suite was run on
+      - key: REPORISK_ENV
+        value: production            # Secure cookies, /docs disabled
+      - key: REPORISK_CORS_ORIGINS
+        value: https://repo-risk.vercel.app
+      # Free instances have no persistent disk: these paths are wiped on restart.
+      - key: REPORISK_DB_PATH
+        value: /tmp/reporisk/reporisk.sqlite3
+      - key: REPORISK_DATA_DIR
+        value: /tmp/reporisk/output
+      - key: REPORISK_CLONE_DIR
+        value: /tmp/reporisk/clones
+      # Free instances get a fraction of a CPU; keep analyses bounded.
+      - key: REPORISK_MAX_COMMITS
+        value: "10000"
+      - key: REPORISK_MAX_QUEUED
+        value: "2"
+      # The sign-in account, recreated at every start (no shell or disk on the free plan).
+      # Render prompts for these when the Blueprint is applied; they are never stored in git.
+      - key: REPORISK_ADMIN_EMAIL
+        sync: false
+      - key: REPORISK_ADMIN_PASSWORD
+        sync: false

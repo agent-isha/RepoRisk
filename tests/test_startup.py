@@ -119,5 +119,51 @@ class StartupSummaryTests(StartupTestCase):
         self.assertTrue(any("no accounts exist" in m for m in logs.output))
 
 
+class AdminProvisioningTests(StartupTestCase):
+    """REPORISK_ADMIN_EMAIL/PASSWORD: accounts on hosts without a shell or persistent disk."""
+
+    ADMIN = {"REPORISK_ENV": "development", "REPORISK_COOKIE_SECURE": "false",
+             "REPORISK_ADMIN_EMAIL": "owner@example.com", "REPORISK_ADMIN_PASSWORD": "a long admin password"}
+
+    def login(self, app, password="a long admin password"):
+        return TestClient(app).post("/api/auth/login", json={"email": "owner@example.com", "password": password})
+
+    def test_account_is_created_and_can_sign_in(self):
+        app = self.factory_app(**self.ADMIN)
+        self.assertEqual(self.login(app).status_code, 200)
+        self.assertNotIn("a long admin password", repr(app.state.settings))
+
+    def test_survives_a_wiped_database(self):
+        self.factory_app(**self.ADMIN)
+        os.remove(self.env["REPORISK_DB_PATH"])  # what a free-tier restart does to the disk
+        self.assertEqual(self.login(self.factory_app(**self.ADMIN)).status_code, 200)
+
+    def test_restart_keeps_sessions_unless_the_password_changes(self):
+        first = self.factory_app(**self.ADMIN)
+        client = TestClient(first)
+        self.assertEqual(client.post("/api/auth/login", json={"email": "owner@example.com",
+                                                             "password": "a long admin password"}).status_code, 200)
+        same = self.factory_app(**self.ADMIN)
+        self.assertEqual(TestClient(same, cookies=client.cookies).get("/api/auth/me").status_code, 200)
+
+        rotated = self.factory_app(**{**self.ADMIN, "REPORISK_ADMIN_PASSWORD": "a rotated admin password"})
+        self.assertEqual(TestClient(rotated, cookies=client.cookies).get("/api/auth/me").status_code, 401)
+        self.assertEqual(self.login(rotated).status_code, 401)
+        self.assertEqual(self.login(rotated, "a rotated admin password").status_code, 200)
+
+    def test_invalid_configuration_refuses_to_start(self):
+        from reporisk.api.config import ConfigError
+
+        with self.assertRaises(ConfigError):
+            self.factory_app(**{**self.ADMIN, "REPORISK_ADMIN_PASSWORD": "short"})
+        with self.assertRaises(ConfigError):
+            self.factory_app(REPORISK_ADMIN_EMAIL="owner@example.com")
+
+    def test_not_set_means_no_account(self):
+        app = self.factory_app(REPORISK_ENV="development", REPORISK_COOKIE_SECURE="false")
+        self.assertEqual(app.state.auth.list_users(), [])
+
+
 if __name__ == "__main__":
     unittest.main()
+

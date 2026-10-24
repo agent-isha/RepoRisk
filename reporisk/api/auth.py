@@ -197,6 +197,24 @@ class AuthStore:
             if cur.rowcount == 0:
                 raise AuthError(f"no account for {normalize_email(email)}")
 
+    def ensure_user(self, email: str, password: str) -> str:
+        """Create the account, or reset its password if it differs. Returns what was done.
+
+        For hosts that provision one account from secret environment variables at
+        every startup (no shell, no persistent disk). Sessions survive only if
+        the password was unchanged.
+        """
+        user = self.get_user(email)
+        if user is None:
+            self.create_user(email, password)
+            return "created"
+        if not user.is_active:
+            self.set_active(email, True)
+        if self.authenticate(email, password) is None:
+            self.set_password(email, password)
+            return "password updated"
+        return "unchanged"
+
     def authenticate(self, email: str, password: str) -> User | None:
         """The active user for these credentials, or None. Constant-ish time either way."""
         with self._connect() as db:
